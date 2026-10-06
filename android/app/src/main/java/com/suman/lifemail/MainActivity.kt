@@ -102,6 +102,25 @@ class MainActivity : AppCompatActivity() {
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState)
         else web.loadUrl("$lifemailOrigin/?app=android")
+        showLastCrash()
+    }
+
+    /** If LifeMail stopped last time, show the technical details once so they can be shared and fixed. */
+    private fun showLastCrash() {
+        val f = java.io.File(filesDir, LifeMailApp.CRASH_FILE)
+        if (!f.exists()) return
+        val text = try { f.readText() } catch (e: Exception) { "" }
+        f.delete()
+        if (text.isBlank()) return
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("LifeMail stopped last time")
+            .setMessage("Sorry about that. Please share these technical details so it can be fixed. They contain no emails or passwords.\n\n" + text.take(1500))
+            .setNegativeButton("Close", null)
+            .setPositiveButton("Share details") { _, _ ->
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(Intent.EXTRA_SUBJECT, "LifeMail crash report").putExtra(Intent.EXTRA_TEXT, text), "Share crash details"))
+            }
+            .show()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

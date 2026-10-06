@@ -19,8 +19,8 @@
         <ImageButton android:id="@+id/btnPersonal" style="@style/WorkBtn" android:contentDescription="@string/personal" android:src="@drawable/ic_mail" android:tint="@color/accent" />
         <View android:layout_width="1dp" android:layout_height="24dp" android:layout_marginStart="2dp" android:layout_marginEnd="2dp" android:background="@color/line" />
         <ImageButton android:id="@+id/btnBack" style="@style/WorkBtn" android:contentDescription="@string/back" android:src="@drawable/ic_back" />
-        <ImageButton android:id="@+id/btnForward" style="@style/WorkBtn" android:visibility="@integer/wide_only_visibility" android:contentDescription="@string/forward" android:src="@drawable/ic_forward" />
-        <ImageButton android:id="@+id/btnReload" style="@style/WorkBtn" android:visibility="@integer/wide_only_visibility" android:contentDescription="@string/reload" android:src="@drawable/ic_reload" />
+        <ImageButton android:id="@+id/btnForward" style="@style/WorkBtn" android:contentDescription="@string/forward" android:src="@drawable/ic_forward" />
+        <ImageButton android:id="@+id/btnReload" style="@style/WorkBtn" android:contentDescription="@string/reload" android:src="@drawable/ic_reload" />
 
         <LinearLayout
             android:id="@+id/addressBar"

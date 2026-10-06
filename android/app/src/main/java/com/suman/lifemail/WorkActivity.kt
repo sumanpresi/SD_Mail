@@ -81,7 +81,8 @@ class WorkActivity : AppCompatActivity() {
         btnForward = findViewById(R.id.btnForward)
         toolbar = findViewById(R.id.toolbar)
         btnExitFull = findViewById(R.id.btnExitFull)
-        setupExitFullButton()
+        try { setupExitFullButton() } catch (e: Exception) { btnExitFull.visibility = View.GONE }
+        fitToolbar()
 
         findViewById<ImageButton>(R.id.btnPersonal).setOnClickListener { goPersonal() }
         btnBack.setOnClickListener { if (web.canGoBack()) web.goBack() }
@@ -154,10 +155,23 @@ class WorkActivity : AppCompatActivity() {
             }
         }
 
-        if (prefs.getBoolean("fullscreen", false)) setFullScreen(true, remember = false)
+        try { if (prefs.getBoolean("fullscreen", false)) setFullScreen(true, remember = false) } catch (_: Exception) { }
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState)
         else load(intent.getStringExtra(EXTRA_URL))
+    }
+
+    /** Folded (narrow) screen: Forward and Reload move into the ⋮ menu to leave room for the address. */
+    private fun fitToolbar() {
+        val wide = resources.configuration.screenWidthDp >= 600
+        val v = if (wide) View.VISIBLE else View.GONE
+        btnForward.visibility = v
+        findViewById<View>(R.id.btnReload).visibility = v
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        fitToolbar() // fold / unfold without reloading the page
     }
 
     override fun onNewIntent(intent: Intent) {
