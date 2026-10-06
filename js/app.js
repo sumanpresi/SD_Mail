@@ -10,6 +10,7 @@ import { archive, trash, toggleStar, setUnread, allUserLabelNames } from './acti
 import { startDrag, endDrag, wireDock, openTaskPanel, shareTask, payloadFor } from './task.js';
 import { openCompose, editDraft } from './compose.js';
 import { openSettings, addAccount } from './settings.js';
+import { initBackNav, backNavChanged } from './backnav.js';
 
 const app = $('#app');
 const FOLDER_ICONS = { inbox: 'inbox', starred: 'star', snoozed: 'clock', drafts: 'file', sent: 'send', archive: 'archive', all: 'all', spam: 'spam', trash: 'trash' };
@@ -33,6 +34,11 @@ async function boot() {
   S.view.profile = D().accounts.some((a) => a.profile === firstProfile) ? firstProfile : (D().accounts[0]?.profile || 'personal');
   checkAuth();
   renderShell();
+  initBackNav({
+    canGoBackView: () => S.view.folder !== 'inbox' || !!S.view.label || !!S.view.search || S.view.account !== 'all',
+    goBackView: () => setView({ folder: 'inbox', label: '', search: '', account: 'all' }),
+    closeReader: () => emit('close-reader'),
+  });
   handleHash();
   await Promise.all([loadLabels(), loadList()]);
   loadUnread();
@@ -151,6 +157,7 @@ function switchProfile(p) {
 }
 function setView(patch) {
   Object.assign(S.view, patch);
+  backNavChanged();
   S.selected = ''; S.thread = null;
   app.classList.remove('reading');
   renderSide(); renderListPane(); renderReader($('#reader'));

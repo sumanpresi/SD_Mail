@@ -1,0 +1,14 @@
+# Nothing secret belongs in this project. These are blocked just in case.
+.env
+.env.*
+*.pem
+*.key
+*.keystore
+*.jks
+client_secret*.json
+credentials*.json
+service-account*.json
+node_modules/
+__pycache__/
+.DS_Store
+.vercel

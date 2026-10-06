@@ -11,6 +11,7 @@ def check(name, cond, extra=''):
 with sync_playwright() as p:
     b = p.chromium.launch()
     ctx = b.new_context(viewport={'width': 1280, 'height': 820})
+    ctx.add_init_script("localStorage.setItem('lm_demo','1')")
     pg = ctx.new_page(); errs = []
     pg.on('pageerror', lambda e: errs.append(str(e)))
     pg.on('console', lambda m: errs.append(m.text) if m.type == 'error' else None)
@@ -149,6 +150,7 @@ with sync_playwright() as p:
 
     # ---- phone (folded Fold) layout ----
     ctx = b.new_context(viewport={'width': 400, 'height': 860}, has_touch=True)
+    ctx.add_init_script("localStorage.setItem('lm_demo','1')")
     pg = ctx.new_page(); errs2 = []
     pg.on('pageerror', lambda e: errs2.append(str(e)))
     pg.goto(BASE + '/'); pg.wait_for_selector('.row')
