@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LifeOS Drop Test</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'">
+<link rel="manifest" href="/lifeos-kit/test-receiver.webmanifest">
+<style>
+  :root { --bg:#f6f5f1; --ink:#1d2124; --mut:#7c8389; --line:#e2e0d8; --acc:#2f6f5e; --soft:#e2eee8; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#17191b; --ink:#e7e8e6; --mut:#868c8f; --line:#2c3033; --acc:#5fae94; --soft:#23332c; } }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:20px; margin:0 0 4px; } p { color:var(--mut); margin:0 0 16px; }
+  .zones { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-bottom:18px; }
+  .zone { border:2px dashed var(--acc); border-radius:14px; padding:22px 12px; text-align:center; color:var(--acc); font-weight:650; }
+  .zone.lifemail-over { background:var(--acc); color:var(--bg); border-style:solid; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td { padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; word-break:break-word; }
+  td:first-child { color:var(--mut); width:34%; }
+  .card { border:1px solid var(--line); border-radius:12px; padding:14px; background:color-mix(in srgb, var(--bg) 60%, white 10%); }
+  .ok { background:var(--soft); color:var(--acc); padding:10px 12px; border-radius:10px; font-weight:600; margin-bottom:12px; }
+  a { color:var(--acc); }
+</style>
+</head><body><main>
+  <h1>LifeOS drop test</h1>
+  <p>This page pretends to be LifeOS. Open it next to LifeMail (split screen or pop-up window on the Fold), then long-press an email in LifeMail and drag it onto a box below — or anywhere on this page.</p>
+  <div class="zones">
+    <div class="zone" id="z-today">Today</div>
+    <div class="zone" id="z-tomorrow">Tomorrow</div>
+    <div class="zone" id="z-waiting">Waiting for</div>
+  </div>
+  <div id="out" class="card"><p style="margin:0">Nothing received yet.</p></div>
+</main>
+<script src="/lifeos-kit/lifemail-receiver.js"></script>
+<script src="/lifeos-kit/test-receiver.js"></script>
+</body></html>

@@ -1,0 +1,172 @@
+// GmailProvider — talks directly to the official Gmail API from the browser.
+// Every provider (Gmail now; Outlook/IMAP later) exposes the same methods, so the UI never
+// contains Gmail-specific code paths. See ARCHITECTURE.md.
+import { getToken } from './auth.js';
+import { headerMap, parseAddress, extractParts, folderQuery, encodeB64Url } from './lib.js';
+
+const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
+
+export class AuthNeededError extends Error {
+  constructor(account) { super('Session expired for ' + account); this.account = account; this.authNeeded = true; }
+}
+
+async function pool(items, limit, fn) {
+  const out = new Array(items.length); let i = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) { const k = i++; out[k] = await fn(items[k], k); }
+  }));
+  return out;
+}
+
+export class GmailProvider {
+  constructor(account) { this.account = account; this.kind = 'gmail'; this.labelCache = null; this.threadCache = new Map(); }
+
+  async req(path, { method = 'GET', body, query, raw = false, retry = 2 } = {}) {
+    const token = getToken(this.account);
+    if (!token) throw new AuthNeededError(this.account);
+    const url = new URL(API + path);
+    if (query) for (const [k, v] of Object.entries(query)) {
+      if (Array.isArray(v)) v.forEach((x) => url.searchParams.append(k, x));
+      else if (v !== undefined && v !== '' && v !== null) url.searchParams.set(k, v);
+    }
+    const r = await fetch(url, {
+      method, headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (r.status === 401) throw new AuthNeededError(this.account);
+    if ((r.status === 429 || r.status >= 500) && retry > 0) {
+      await new Promise((res) => setTimeout(res, (3 - retry) * 900 + 400));
+      return this.req(path, { method, body, query, raw, retry: retry - 1 });
+    }
+    if (!r.ok) {
+      let msg = r.statusText; try { msg = (await r.json()).error.message; } catch {}
+      throw new Error('Gmail: ' + msg);
+    }
+    if (raw || r.status === 204) return r;
+    return r.json();
+  }
+
+  // ---- labels ----
+  async listLabels(force = false) {
+    if (this.labelCache && !force) return this.labelCache;
+    const j = await this.req('/labels');
+    this.labelCache = (j.labels || []).map((l) => ({ id: l.id, name: l.name, type: l.type, color: l.color?.backgroundColor || '' }));
+    return this.labelCache;
+  }
+  async ensureLabel(name) {
+    const labels = await this.listLabels();
+    const found = labels.find((l) => l.name.toLowerCase() === name.toLowerCase());
+    if (found) return found.id;
+    const l = await this.req('/labels', { method: 'POST', body: { name, labelListVisibility: 'labelShow', messageListVisibility: 'show' } });
+    this.labelCache.push({ id: l.id, name: l.name, type: 'user', color: '' });
+    return l.id;
+  }
+
+  async inboxUnread() { const l = await this.req('/labels/INBOX'); return l.threadsUnread || 0; }
+
+  // ---- list ----
+  async listThreads({ folderId = 'inbox', search = '', labelId = '', pageToken = '', max = 25 }) {
+    const fq = folderQuery(folderId, search);
+    const labelIds = labelId ? [labelId] : fq.labelIds;
+    const j = await this.req('/threads', { query: { maxResults: max, pageToken, q: fq.q, labelIds, includeSpamTrash: fq.includeSpamTrash ? 'true' : undefined } });
+    const ids = (j.threads || []).map((t) => t);
+    const threads = await pool(ids, 8, async (t) => {
+      const c = this.threadCache.get(t.id);
+      if (c && c.historyId === t.historyId) return c.summary; // unchanged since last fetch: no extra API call
+      const full = await this.req('/threads/' + t.id, { query: { format: 'metadata', metadataHeaders: ['From', 'To', 'Subject', 'Date', 'Message-ID'] } });
+      const s = this.summarize(full);
+      this.threadCache.set(t.id, { historyId: t.historyId, summary: s });
+      return s;
+    });
+    return { threads: threads.filter(Boolean), nextPageToken: j.nextPageToken || '' };
+  }
+
+  summarize(thread) {
+    const msgs = thread.messages || [];
+    if (!msgs.length) return null;
+    const last = msgs[msgs.length - 1];
+    const first = headerMap(msgs[0].payload?.headers);
+    const lh = headerMap(last.payload?.headers);
+    const labelIds = [...new Set(msgs.flatMap((m) => m.labelIds || []))];
+    const senders = [...new Map(msgs.map((m) => { const a = parseAddress(headerMap(m.payload?.headers).from); return [a.email, a]; })).values()];
+    return {
+      id: thread.id, threadId: thread.id, account: this.account, provider: 'gmail',
+      messageId: last.id, rfcMessageId: lh['message-id'] || '',
+      subject: first.subject || '(no subject)',
+      from: parseAddress(lh.from || first.from || ''), senders,
+      to: lh.to || '', snippet: decodeEntities(last.snippet || ''),
+      date: Number(last.internalDate) || Date.parse(lh.date) || 0,
+      unread: msgs.some((m) => (m.labelIds || []).includes('UNREAD')),
+      starred: labelIds.includes('STARRED'),
+      hasAttachment: msgs.some((m) => /multipart\/mixed/i.test(m.payload?.mimeType || '')),
+      labelIds, count: msgs.length,
+    };
+  }
+
+  // ---- read ----
+  async getThread(threadId) {
+    const t = await this.req('/threads/' + threadId, { query: { format: 'full' } });
+    const summary = this.summarize(t);
+    const messages = (t.messages || []).map((m) => {
+      const h = headerMap(m.payload?.headers);
+      const parts = extractParts(m.payload);
+      return {
+        id: m.id, threadId, labelIds: m.labelIds || [], snippet: decodeEntities(m.snippet || ''),
+        from: parseAddress(h.from || ''), to: h.to || '', cc: h.cc || '', bcc: h.bcc || '', replyTo: h['reply-to'] || '',
+        subject: h.subject || '', date: Number(m.internalDate) || Date.parse(h.date) || 0,
+        rfcMessageId: h['message-id'] || '', references: h.references || '',
+        html: parts.html, text: parts.text, attachments: parts.attachments,
+      };
+    });
+    return { ...summary, messages };
+  }
+
+  async getAttachment(messageId, attachmentId) {
+    const j = await this.req(`/messages/${messageId}/attachments/${attachmentId}`);
+    return j.data; // base64url
+  }
+
+  // ---- change ----
+  modifyThread(threadId, add = [], remove = []) {
+    return this.req(`/threads/${threadId}/modify`, { method: 'POST', body: { addLabelIds: add, removeLabelIds: remove } });
+  }
+  modifyMessage(messageId, add = [], remove = []) {
+    return this.req(`/messages/${messageId}/modify`, { method: 'POST', body: { addLabelIds: add, removeLabelIds: remove } });
+  }
+  trashThread(threadId) { return this.req(`/threads/${threadId}/trash`, { method: 'POST' }); }
+  untrashThread(threadId) { return this.req(`/threads/${threadId}/untrash`, { method: 'POST' }); }
+
+  // ---- send / drafts ----
+  send(mime, threadId) {
+    return this.req('/messages/send', { method: 'POST', body: { raw: encodeB64Url(mime), ...(threadId ? { threadId } : {}) } });
+  }
+  async saveDraft(mime, threadId, draftId) {
+    const body = { message: { raw: encodeB64Url(mime), ...(threadId ? { threadId } : {}) } };
+    if (draftId) return this.req('/drafts/' + draftId, { method: 'PUT', body: { id: draftId, ...body } });
+    return this.req('/drafts', { method: 'POST', body });
+  }
+  deleteDraft(draftId) { return this.req('/drafts/' + draftId, { method: 'DELETE' }); }
+  async findDraftId(messageId) {
+    let pageToken = '';
+    for (let i = 0; i < 5; i++) {
+      const j = await this.req('/drafts', { query: { maxResults: 100, pageToken } });
+      const d = (j.drafts || []).find((x) => x.message?.id === messageId);
+      if (d) return d.id;
+      if (!j.nextPageToken) break; pageToken = j.nextPageToken;
+    }
+    return '';
+  }
+
+  // ---- new-mail polling (cheap: history API) ----
+  async currentHistoryId() { return (await this.req('/profile')).historyId; }
+  async newInboxMessages(startHistoryId) {
+    const j = await this.req('/history', { query: { startHistoryId, historyTypes: 'messageAdded', labelId: 'INBOX' } });
+    const ids = (j.history || []).flatMap((h) => (h.messagesAdded || []).map((m) => m.message)).filter((m) => (m.labelIds || []).includes('UNREAD'));
+    const metas = await pool(ids.slice(0, 5), 3, (m) => this.req('/messages/' + m.id, { query: { format: 'metadata', metadataHeaders: ['From', 'Subject'] } }));
+    return { historyId: j.historyId || startHistoryId, messages: metas.map((m) => { const h = headerMap(m.payload?.headers); return { id: m.id, threadId: m.threadId, from: parseAddress(h.from), subject: h.subject || '', labelIds: m.labelIds || [] }; }) };
+  }
+}
+
+function decodeEntities(s) {
+  return s.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+}
