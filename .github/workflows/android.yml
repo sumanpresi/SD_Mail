@@ -27,7 +27,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      # GitHub's Ubuntu machines already include the Android SDK (ANDROID_HOME).
+      - name: Check Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME" || { echo "::error::Android SDK not found on this runner"; exit 1; }
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
       - uses: gradle/actions/setup-gradle@v4
         with:
