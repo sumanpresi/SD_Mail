@@ -11,7 +11,7 @@ with sync_playwright() as p:
     pg = ctx.new_page(); errs = []
     pg.on('pageerror', lambda e: errs.append(str(e)))
     pg.goto('http://localhost:8765/about:blank'.replace('/about:blank', '/'))
-    pg.wait_for_selector('.row')
+    pg.wait_for_selector('.row'); pg.wait_for_timeout(800)
     cls = lambda: pg.get_attribute('#app', 'class')
     back = lambda: (pg.go_back(), pg.wait_for_timeout(350))
     hl0 = pg.evaluate('history.length')

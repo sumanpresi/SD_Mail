@@ -3,7 +3,7 @@
 //   2. "+ Task" button → small panel → Send to LifeOS (opens LifeOS with the task pre-filled)
 //   3. Share → LifeOS (Android share sheet; LifeOS registers as a share target)
 import { S, D, esc, icon, openModal, toast, keyOf, emit, account } from './core.js';
-import { createTaskPayload, payloadToText, buildLifeOSUrl, suggestTask, PAYLOAD_MIME, isoDate, htmlToText } from './lib.js';
+import { createTaskPayload, payloadToText, buildLifeOSUrl, suggestTask, PAYLOAD_MIME, isoDate, htmlToText, encodePayload } from './lib.js';
 import { addLabelQuiet } from './actions.js';
 
 function defaultsFor(t, bodyText = '') {
@@ -33,6 +33,14 @@ function emailInfo(t) {
 export function payloadFor(t, taskOverrides) {
   const body = t.messages ? htmlToText(t.messages[t.messages.length - 1].html || t.messages[t.messages.length - 1].text || '') : '';
   return createTaskPayload(emailInfo(t), { ...defaultsFor(t, body), ...(taskOverrides || {}) }, location.origin);
+}
+
+// A real web link that carries the whole task. Chrome on Android can only drag *links, images and
+// text* to other apps with a finger, so every email row has this link underneath it. Dropping it into
+// LifeOS (with lifemail-receiver.js) creates the task; the address also opens LifeOS directly.
+export function dragHref(t) {
+  const p = payloadFor(t);
+  return buildLifeOSUrl(D().settings.lifeos.urlTemplate, p) || `${location.origin}/lifeos-kit/test-receiver.html?lifemail=${encodePayload(p)}`;
 }
 
 // ---------- drag ----------

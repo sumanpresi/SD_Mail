@@ -49,6 +49,8 @@ with sync_playwright() as p:
     pj = json.loads(data['application/x-lifemail+json'])
     check('drag payload has task title', bool(pj['task']['title']), pj['task'])
 
+    href = pg.locator('.row', has_text='NGDR Portal API').locator('.row-link').get_attribute('href')
+    check('row is a real link carrying the task (finger drag on Android)', 'lifemail=' in href, href[:120])
     # drop into the LifeOS test receiver (separate page) — text only, like a cross-app drop on Android
     rp = ctx.new_page(); rp.goto(BASE + '/lifeos-kit/test-receiver.html')
     rp.evaluate("""(txt) => { const dt = new DataTransfer(); dt.setData('text/plain', txt);
@@ -64,6 +66,10 @@ with sync_playwright() as p:
     rp.evaluate("""() => { const dt = new DataTransfer(); dt.setData('text/uri-list', 'https://mail.google.com/mail/u/0/#inbox/abc');
       document.documentElement.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt })); }""")
     check('plain Gmail link drop makes a basic task', rp.evaluate('window.__lastTask.source') == 'link')
+    rp.evaluate("""(u) => { const dt = new DataTransfer(); dt.setData('text/uri-list', u); dt.setData('text/plain', u);
+      document.getElementById('z-waiting').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt })); }""", href)
+    t3 = rp.evaluate('window.__lastTask')
+    check('link-only drop (what Android sends) creates the full task', t3 and t3['threadId'] == 'd1' and t3['destination'] == 'waiting', t3)
     rp.close()
 
     # + Task panel → Send to LifeOS (URL template pointing at the test receiver)

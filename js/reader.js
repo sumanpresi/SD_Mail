@@ -2,7 +2,7 @@
 import { S, D, esc, icon, $, provider, keyOf, emit, toast, openMenu, labelName, labelColor, colorOf, hashColor, taskLinkFor, account, blobFromB64Url } from './core.js';
 import { formatListDate, formatSize, initials, gmailWebUrl, escapeHtml } from './lib.js';
 import { archive, trash, spam, toggleStar, setUnread, toggleLabel, moveToInbox, allUserLabelNames } from './actions.js';
-import { openTaskPanel, shareTask, payloadFor } from './task.js';
+import { openTaskPanel, shareTask, payloadFor, dragHref } from './task.js';
 import { openCompose } from './compose.js';
 
 const SYSTEM = new Set(['INBOX', 'UNREAD', 'STARRED', 'IMPORTANT', 'SENT', 'DRAFT', 'SPAM', 'TRASH', 'CHAT']);
@@ -59,7 +59,7 @@ export function renderReader(root) {
     <button class="iconbtn hide-mid" data-a="forward" title="Forward (f)" aria-label="Forward">${icon('forward')}</button>
     <button class="iconbtn" data-a="more" title="More" aria-label="More actions">${icon('more')}</button>
     <span class="grow"></span>
-    <button class="taskbtn" data-a="task" title="Add to LifeOS (t)" draggable="true">${icon('plus')}<span class="lbl">Task</span></button>
+    <a class="taskbtn" data-a="task" href="${esc(dragHref(t))}" draggable="true" role="button" title="Add to LifeOS (t) — or long-press and drag into LifeOS">${icon('plus')}<span class="lbl">Task</span></a>
   </div>
   <div class="rbody" id="rbody">
     <div class="rsubject"><h2>${esc(t.subject || '')}</h2></div>
@@ -201,6 +201,7 @@ export function labelMenu(anchor, t) {
 
 function onClick(e, t, root) {
   const b = e.target.closest('[data-a]'); if (!b) return;
+  if (b.tagName === 'A') e.preventDefault();
   const a = b.dataset.a;
   const sum = S.threads.find((x) => keyOf(x) === keyOf(t)) || t;
   switch (a) {

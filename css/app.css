@@ -156,6 +156,9 @@ a { color: var(--accent); }
 .row:hover { background: var(--hover); }
 .row.sel { background: var(--sel); }
 .row.sel::before, .row.sel + .row::before { border-color: transparent; }
+.row .row-link { position: absolute; inset: 0; z-index: 1; border-radius: 8px; -webkit-tap-highlight-color: transparent; }
+.row .rstar { z-index: 2; }
+.taskbtn { text-decoration: none; }
 .row .acc { width: 3px; border-radius: 2px; align-self: stretch; margin: 2px 0; }
 .row .r1 { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .row .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }

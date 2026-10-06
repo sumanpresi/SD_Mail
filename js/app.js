@@ -7,7 +7,7 @@ import { DEMO_ACCOUNTS } from './demo.js';
 import { FOLDERS, folderById, formatListDate, initials, parseOpenHash, withinQuietHours } from './lib.js';
 import { renderReader, openThread, userLabelIds, currentThreadAction, labelMenu } from './reader.js';
 import { archive, trash, toggleStar, setUnread, allUserLabelNames } from './actions.js';
-import { startDrag, endDrag, wireDock, openTaskPanel, shareTask, payloadFor } from './task.js';
+import { startDrag, endDrag, wireDock, openTaskPanel, shareTask, payloadFor, dragHref } from './task.js';
 import { openCompose, editDraft } from './compose.js';
 import { openSettings, addAccount } from './settings.js';
 import { initBackNav, backNavChanged } from './backnav.js';
@@ -213,8 +213,9 @@ function rowHtml(t) {
   const chips = userLabelIds(t.labelIds).map((id) => labelName(t.account, id)).filter((n) => n !== 'LifeOS').slice(0, 3);
   const linked = taskLinkFor(t);
   const who = S.view.folder === 'sent' || S.view.folder === 'drafts' ? 'To: ' + (t.to || '').replace(/<[^>]+>/g, '').trim() : (t.senders?.length > 1 ? [...new Set(t.senders.map((s) => s.name.split(' ')[0]).reverse())].slice(0, 3).reverse().join(', ') : t.from.name || t.from.email);
-  return `<div class="row ${t.unread ? 'unread' : ''} ${S.selected === key ? 'sel' : ''}" role="option" aria-selected="${S.selected === key}" tabindex="${S.selected === key ? 0 : -1}" draggable="true" data-key="${esc(key)}"
+  return `<div class="row ${t.unread ? 'unread' : ''} ${S.selected === key ? 'sel' : ''}" role="option" aria-selected="${S.selected === key}" tabindex="${S.selected === key ? 0 : -1}" data-key="${esc(key)}"
       aria-label="${esc((t.unread ? 'Unread. ' : '') + (t.from.name || '') + '. ' + t.subject)}">
+    <a class="row-link" href="${esc(dragHref(t))}" draggable="true" tabindex="-1" aria-hidden="true"></a>
     <span class="acc" style="background:${accountsInView().length > 1 || S.view.account === 'all' ? colorOf(t.account) : 'transparent'}"></span>
     <div style="min-width:0">
       <span class="udot"></span>
@@ -253,6 +254,7 @@ function wireList() {
   let pressTimer = null; let dragStarted = false;
   lp.addEventListener('click', (e) => {
     const row = e.target.closest('.row'); if (!row) return;
+    if (e.target.closest('.row-link')) e.preventDefault(); // a tap opens the email, not the link
     const t = S.threads.find((x) => keyOf(x) === row.dataset.key); if (!t) return;
     if (e.target.closest('[data-star]')) { e.stopPropagation(); toggleStar(t); return; }
     if (S.view.folder === 'drafts') { editDraft(t); return; }
@@ -269,6 +271,8 @@ function wireList() {
   // Long-press without dragging opens a quick-action menu (touch)
   lp.addEventListener('contextmenu', (e) => {
     const row = e.target.closest('.row'); if (!row) return;
+    // Finger long-press must reach Chrome untouched — that is what starts a drag on Android.
+    if (e.pointerType === 'touch' || (!e.pointerType && matchMedia('(pointer: coarse)').matches)) return;
     e.preventDefault();
     const t = S.threads.find((x) => keyOf(x) === row.dataset.key); if (!t) return;
     clearTimeout(pressTimer);
