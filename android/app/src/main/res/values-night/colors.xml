@@ -1,0 +1,9 @@
+<resources>
+    <color name="accent">#5FAE94</color>
+    <color name="work">#DD8C6C</color>
+    <color name="bg">#17191B</color>
+    <color name="bar">#1E2123</color>
+    <color name="ink">#E7E8E6</color>
+    <color name="ink3">#868C8F</color>
+    <color name="line">#2C3033</color>
+</resources>

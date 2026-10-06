@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">LifeMail</string>
+    <string name="work_title">Work</string>
+    <string name="personal">Back to Personal</string>
+    <string name="back">Back</string>
+    <string name="forward">Forward</string>
+    <string name="reload">Reload</string>
+    <string name="more">More</string>
+    <string name="home">Workplace home</string>
+    <string name="open_browser">Open in browser</string>
+    <string name="desktop_site">Desktop site</string>
+    <string name="full_screen">Full screen</string>
+    <string name="clear_session">Clear Work session</string>
+    <string name="clear_session_q">Sign out of Government Workplace on this phone? This clears only the Work browser (cookies, storage, cache). Personal mail is not affected.</string>
+    <string name="clear">Clear</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Try again</string>
+    <string name="offline">Workplace requires an internet connection.</string>
+    <string name="unreachable">Unable to connect to Workplace. Please check your internet connection or try again.</string>
+    <string name="downloading">Downloading %1$s…</string>
+    <string name="download_unsupported">This file can\'t be downloaded inside LifeMail. Use \"Open in browser\".</string>
+    <string name="session_cleared">Work session cleared</string>
+</resources>

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="@color/bar"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp">
+
+        <ImageButton android:id="@+id/btnPersonal" style="@style/WorkBtn" android:contentDescription="@string/personal" android:src="@drawable/ic_mail" android:tint="@color/accent" />
+        <View android:layout_width="1dp" android:layout_height="24dp" android:layout_marginStart="2dp" android:layout_marginEnd="2dp" android:background="@color/line" />
+        <ImageButton android:id="@+id/btnBack" style="@style/WorkBtn" android:contentDescription="@string/back" android:src="@drawable/ic_back" />
+        <ImageButton android:id="@+id/btnForward" style="@style/WorkBtn" android:contentDescription="@string/forward" android:src="@drawable/ic_forward" />
+        <ImageButton android:id="@+id/btnReload" style="@style/WorkBtn" android:contentDescription="@string/reload" android:src="@drawable/ic_reload" />
+
+        <LinearLayout
+            android:id="@+id/addressBar"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1"
+            android:background="@drawable/address_bg"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
+            <ImageView android:id="@+id/lock" android:layout_width="16dp" android:layout_height="16dp" android:src="@drawable/ic_lock" android:tint="@color/accent" android:importantForAccessibility="no" />
+            <TextView
+                android:id="@+id/host"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="@color/ink"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <ImageButton android:id="@+id/btnMore" style="@style/WorkBtn" android:contentDescription="@string/more" android:src="@drawable/ic_more" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:indeterminate="false"
+        android:max="100"
+        android:progressTint="@color/work"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <WebView
+            android:id="@+id/web"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <LinearLayout
+            android:id="@+id/errorPanel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/bg"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="32dp"
+            android:visibility="gone">
+            <ImageView android:layout_width="48dp" android:layout_height="48dp" android:src="@drawable/ic_cloud_off" android:tint="@color/ink3" android:importantForAccessibility="no" />
+            <TextView
+                android:id="@+id/errorText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center"
+                android:textColor="@color/ink"
+                android:textSize="16sp" />
+            <Button
+                android:id="@+id/btnRetry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="@string/retry" />
+            <Button
+                android:id="@+id/btnOpenBrowser"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/open_browser" />
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>
