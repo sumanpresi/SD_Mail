@@ -60,6 +60,7 @@ class WorkActivity : AppCompatActivity() {
     private var defaultUa = ""
     private var clearHistoryOnLoad = false
     private var fullScreen = false
+    private lateinit var btnExitFull: ImageButton
 
     private val home: String get() = BuildConfig.WORK_HOME
 
@@ -79,6 +80,8 @@ class WorkActivity : AppCompatActivity() {
         btnBack = findViewById(R.id.btnBack)
         btnForward = findViewById(R.id.btnForward)
         toolbar = findViewById(R.id.toolbar)
+        btnExitFull = findViewById(R.id.btnExitFull)
+        setupExitFullButton()
 
         findViewById<ImageButton>(R.id.btnPersonal).setOnClickListener { goPersonal() }
         btnBack.setOnClickListener { if (web.canGoBack()) web.goBack() }
@@ -145,11 +148,13 @@ class WorkActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this) {
             when {
+                web.canGoBack() -> web.goBack()       // Back always steps back through Workplace pages first
                 fullScreen -> setFullScreen(false)
-                web.canGoBack() -> web.goBack()
                 else -> goPersonal()
             }
         }
+
+        if (prefs.getBoolean("fullscreen", false)) setFullScreen(true, remember = false)
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState)
         else load(intent.getStringExtra(EXTRA_URL))
@@ -231,10 +236,11 @@ class WorkActivity : AppCompatActivity() {
     // ---------------- menu ----------------
     private fun showMenu(anchor: View) {
         val menu = PopupMenu(this, anchor)
+        menu.menu.add(0, 8, 0, R.string.forward).isEnabled = web.canGoForward()
         menu.menu.add(0, 1, 0, R.string.reload)
         menu.menu.add(0, 2, 1, R.string.home)
         menu.menu.add(0, 3, 2, R.string.desktop_site).apply { isCheckable = true; isChecked = prefs.getBoolean("desktop", false) }
-        menu.menu.add(0, 4, 3, R.string.full_screen)
+        menu.menu.add(0, 4, 3, if (fullScreen) R.string.exit_full_screen else R.string.full_screen)
         menu.menu.add(0, 5, 4, R.string.open_browser)
         menu.menu.add(0, 6, 5, R.string.clear_session)
         menu.menu.add(0, 7, 6, R.string.personal)
@@ -243,7 +249,8 @@ class WorkActivity : AppCompatActivity() {
                 1 -> reload()
                 2 -> { clearHistoryOnLoad = false; load(home) }
                 3 -> { val on = !prefs.getBoolean("desktop", false); prefs.edit().putBoolean("desktop", on).apply(); applyDesktopMode(on, reloadPage = true) }
-                4 -> setFullScreen(true)
+                4 -> setFullScreen(!fullScreen)
+                8 -> if (web.canGoForward()) web.goForward()
                 5 -> Web.openInBrowser(this, web.url ?: home)
                 6 -> confirmClearSession()
                 7 -> goPersonal()
@@ -261,15 +268,55 @@ class WorkActivity : AppCompatActivity() {
         if (reloadPage) reload()
     }
 
-    private fun setFullScreen(on: Boolean) {
+    /**
+     * Full screen gives the Workplace page the whole display: LifeMail's bar and the phone's status and
+     * navigation bars are hidden. A small round button stays on top to bring the bar back (it can be
+     * dragged out of the way). The choice is remembered.
+     */
+    private fun setFullScreen(on: Boolean, remember: Boolean = true) {
         fullScreen = on
         toolbar.visibility = if (on) View.GONE else View.VISIBLE
+        btnExitFull.visibility = if (on) View.VISIBLE else View.GONE
         val c = WindowCompat.getInsetsController(window, window.decorView)
         if (on) {
             c.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             c.hide(WindowInsetsCompat.Type.systemBars())
-            Toast.makeText(this, "Press Back to leave full screen", Toast.LENGTH_SHORT).show()
         } else c.show(WindowInsetsCompat.Type.systemBars())
+        if (remember) {
+            if (on && !prefs.getBoolean("fullscreenHintShown", false)) {
+                Toast.makeText(this, R.string.full_screen_hint, Toast.LENGTH_LONG).show()
+                prefs.edit().putBoolean("fullscreenHintShown", true).apply()
+            }
+            prefs.edit().putBoolean("fullscreen", on).apply()
+        }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupExitFullButton() {
+        var downX = 0f; var downY = 0f; var startTx = 0f; var startTy = 0f; var moved = false
+        btnExitFull.translationX = prefs.getFloat("exitBtnX", 0f)
+        btnExitFull.translationY = prefs.getFloat("exitBtnY", 0f)
+        btnExitFull.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> { downX = e.rawX; downY = e.rawY; startTx = v.translationX; startTy = v.translationY; moved = false; true }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val dx = e.rawX - downX; val dy = e.rawY - downY
+                    if (moved || kotlin.math.abs(dx) + kotlin.math.abs(dy) > 12) {
+                        moved = true
+                        val parent = v.parent as View
+                        v.translationX = (startTx + dx).coerceIn(-v.left.toFloat(), (parent.width - v.right).toFloat())
+                        v.translationY = (startTy + dy).coerceIn(-v.top.toFloat(), (parent.height - v.bottom).toFloat())
+                    }
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    if (moved) prefs.edit().putFloat("exitBtnX", v.translationX).putFloat("exitBtnY", v.translationY).apply()
+                    else { v.performClick(); setFullScreen(false) }
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     /** Signs out of Workplace on this phone: wipes ONLY the Work browser's data (this process). */

@@ -1,0 +1,4 @@
+<resources>
+    <!-- 0 = visible on wide (unfolded) screens -->
+    <integer name="wide_only_visibility">0</integer>
+</resources>

@@ -9,7 +9,7 @@
     <LinearLayout
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="48dp"
         android:background="@color/bar"
         android:gravity="center_vertical"
         android:orientation="horizontal"
@@ -19,13 +19,13 @@
         <ImageButton android:id="@+id/btnPersonal" style="@style/WorkBtn" android:contentDescription="@string/personal" android:src="@drawable/ic_mail" android:tint="@color/accent" />
         <View android:layout_width="1dp" android:layout_height="24dp" android:layout_marginStart="2dp" android:layout_marginEnd="2dp" android:background="@color/line" />
         <ImageButton android:id="@+id/btnBack" style="@style/WorkBtn" android:contentDescription="@string/back" android:src="@drawable/ic_back" />
-        <ImageButton android:id="@+id/btnForward" style="@style/WorkBtn" android:contentDescription="@string/forward" android:src="@drawable/ic_forward" />
-        <ImageButton android:id="@+id/btnReload" style="@style/WorkBtn" android:contentDescription="@string/reload" android:src="@drawable/ic_reload" />
+        <ImageButton android:id="@+id/btnForward" style="@style/WorkBtn" android:visibility="@integer/wide_only_visibility" android:contentDescription="@string/forward" android:src="@drawable/ic_forward" />
+        <ImageButton android:id="@+id/btnReload" style="@style/WorkBtn" android:visibility="@integer/wide_only_visibility" android:contentDescription="@string/reload" android:src="@drawable/ic_reload" />
 
         <LinearLayout
             android:id="@+id/addressBar"
             android:layout_width="0dp"
-            android:layout_height="40dp"
+            android:layout_height="36dp"
             android:layout_marginStart="6dp"
             android:layout_marginEnd="4dp"
             android:layout_weight="1"
@@ -68,6 +68,21 @@
             android:id="@+id/web"
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
+
+        <ImageButton
+            android:id="@+id/btnExitFull"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="12dp"
+            android:alpha="0.75"
+            android:background="@drawable/fab_bg"
+            android:contentDescription="@string/exit_full_screen"
+            android:elevation="6dp"
+            android:scaleType="center"
+            android:src="@drawable/ic_fullscreen_exit"
+            android:tint="#FFFFFF"
+            android:visibility="gone" />
 
         <LinearLayout
             android:id="@+id/errorPanel"

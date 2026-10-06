@@ -1,0 +1,4 @@
+<resources>
+    <!-- 8 = gone: on the narrow (folded) screen Forward and Reload live in the ⋮ menu -->
+    <integer name="wide_only_visibility">8</integer>
+</resources>
