@@ -29,6 +29,8 @@ export function defaultData() {
       },
     },
     taskLinks: [], // {id, account, threadId, title, project, due, createdAt}
+    // Work = Government Workplace, opened as the real Government website (see js/workplace.js).
+    work: { portalUrl: 'https://workplace.mgovcloud.in/', authUrl: 'https://accounts.mgovcloud.in/signin', autoOpen: true, shortcuts: [], lastOpened: 0 },
   };
 }
 

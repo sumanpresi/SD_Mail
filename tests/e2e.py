@@ -33,6 +33,11 @@ with sync_playwright() as p:
     check('inline cid image resolved to blob', 'blob:' in (fr.locator('img').first.get_attribute('src') or ''))
     pg.screenshot(path=OUT + 'e2e-thread.png')
 
+    href0 = pg.locator('.row', has_text='NGDR Portal API').locator('.row-link').get_attribute('href')
+    check('without LifeOS: row link is the clean Gmail link', href0.startswith('https://mail.google.com/'), href0[:100])
+    # connect LifeOS (the test receiver plays LifeOS) before testing the full drag payload
+    pg.evaluate("""async () => { const c = await import('/js/core.js'); c.S.store.update(d => { d.settings.lifeos.urlTemplate = location.origin + '/lifeos-kit/test-receiver.html?lifemail={payload}'; }); c.emit('list'); }""")
+    pg.wait_for_timeout(200)
     # drag payload: capture what a real dragstart puts on the DataTransfer
     data = pg.evaluate("""() => {
       const row = [...document.querySelectorAll('.row')].find(r => r.textContent.includes('NGDR Portal API'));

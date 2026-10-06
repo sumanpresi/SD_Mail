@@ -16,6 +16,13 @@
 - Works offline for recently viewed lists; safe display of email (scripts blocked, tracking images hidden)
 - Installable from Chrome; keyboard shortcuts when a keyboard is attached
 
+## Work = Government Workplace
+
+Tapping **Work** opens the real Government Workplace (`https://workplace.mgovcloud.in/`) — Mail, Calendar, ToDo, Notes, Contacts, Resources.
+You sign in on the Government's own page (password + authenticator code); LifeMail never sees, stores or forwards them, and does not copy Government mail anywhere.
+The Government site cannot be shown inside another app (its sign-in pages refuse framing and browsers block sign-in cookies in frames), so LifeMail opens it directly — on the installed app it appears on top of LifeMail and Back returns you. Change the address, auto-open and shortcuts in **Settings → Work (Government)**.
+If you later add a Gmail account to the Work profile, Work shows that inbox plus a *Government Workplace* entry in the sidebar.
+
 ## Start here
 
 1. **Try it:** deploy to Vercel (SETUP.md step 1) and open it — with no Client ID it runs in **demo mode** with sample emails.

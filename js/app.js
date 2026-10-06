@@ -11,6 +11,7 @@ import { startDrag, endDrag, wireDock, openTaskPanel, shareTask, payloadFor, dra
 import { openCompose, editDraft } from './compose.js';
 import { openSettings, addAccount } from './settings.js';
 import { initBackNav, backNavChanged } from './backnav.js';
+import { renderWorkPanel, openWorkplace, workIsPortalOnly, workSettings } from './workplace.js';
 
 const app = $('#app');
 const FOLDER_ICONS = { inbox: 'inbox', starred: 'star', snoozed: 'clock', drafts: 'file', sent: 'send', archive: 'archive', all: 'all', spam: 'spam', trash: 'trash' };
@@ -102,6 +103,7 @@ function renderShell() {
 function renderSide() {
   const side = $('#side'); if (!side) return;
   const d = D(); const v = S.view;
+  const portalOnly = workIsPortalOnly();
   const inProfile = d.accounts.filter((a) => a.profile === v.profile);
   const labels = [...new Set([...d.pinnedLabels, ...inProfile.flatMap((a) => (S.labels[a.email] || []).filter((l) => l.type === 'user').map((l) => l.name))])]
     .filter((n) => d.pinnedLabels.includes(n) || inProfile.some((a) => labelIdByName(a.email, n)));
@@ -122,11 +124,14 @@ function renderSide() {
         <button class="nav acct ${v.account === 'all' ? 'on' : ''}" data-acct="all">${icon('inbox')}<span class="t">All ${esc(d.profiles[v.profile].name)} accounts</span></button>
         ${inProfile.map((a) => `<button class="nav acct ${v.account === a.email ? 'on' : ''}" data-acct="${esc(a.email)}"><span class="acct-dot" style="background:${a.color}"></span><span class="t">${esc(a.displayName || a.email)}</span></button>`).join('')}
       </div>` : ''}
-      ${inProfile.length === 0 ? `<div class="note full-only" style="margin:8px">No accounts in ${esc(d.profiles[v.profile].name)} yet. <a href="#" data-act="settings-acc">Assign or add one</a>.</div>` : ''}
-      <div class="sec full-only">Mailboxes</div>
+      ${v.profile === 'work' ? `<div class="sec full-only">Government</div>
+        <button class="nav ${portalOnly ? 'on' : ''}" data-act="workplace" title="Government Workplace" aria-label="Open Government Workplace">${icon('work')}<span class="t full-only">Government Workplace</span><span class="full-only" style="color:var(--ink-3)">${icon('external', 'sm')}</span></button>
+        ${workSettings().shortcuts.map((sc, i) => `<button class="nav full-only" data-act="work-sc" data-i="${i}"><span class="dot" style="background:var(--work)"></span><span class="t">${esc(sc.name)}</span></button>`).join('')}` : ''}
+      ${inProfile.length === 0 && !portalOnly ? `<div class="note full-only" style="margin:8px">No accounts in ${esc(d.profiles[v.profile].name)} yet. <a href="#" data-act="settings-acc">Assign or add one</a>.</div>` : ''}
+      ${portalOnly ? '' : `<div class="sec full-only">Mailboxes</div>
       ${FOLDERS.map((f) => `<button class="nav ${!v.label && v.folder === f.id && !v.search ? 'on' : ''}" data-folder="${f.id}" title="${f.name}" aria-label="${f.name}">${icon(FOLDER_ICONS[f.id])}<span class="t full-only">${f.name}</span>${f.id === 'inbox' && S.unread[v.profile] ? `<span class="n full-only">${S.unread[v.profile]}</span>` : ''}</button>`).join('')}
       <div class="sec full-only">Labels</div>
-      <div class="full-only">${labels.map((n) => `<button class="nav ${v.label === n ? 'on' : ''}" data-label="${esc(n)}"><span class="dot" style="background:${labelColor(n) || 'var(--line-2)'}"></span><span class="t">${esc(n)}</span></button>`).join('') || '<div class="note" style="margin:4px 8px">No labels yet</div>'}</div>
+      <div class="full-only">${labels.map((n) => `<button class="nav ${v.label === n ? 'on' : ''}" data-label="${esc(n)}"><span class="dot" style="background:${labelColor(n) || 'var(--line-2)'}"></span><span class="t">${esc(n)}</span></button>`).join('') || '<div class="note" style="margin:4px 8px">No labels yet</div>'}</div>`}
     </div>
     <div class="side-foot">
       <button class="nav full-only" data-act="compose">${icon('compose')}<span class="t">Compose</span></button>
@@ -144,11 +149,14 @@ function renderSide() {
     else if (b.dataset.act === 'compose') openCompose();
     else if (b.dataset.act === 'settings') openSettings();
     else if (b.dataset.act === 'settings-acc') openSettings('accounts');
+    else if (b.dataset.act === 'workplace') { openWorkplace(); renderListPane(); }
+    else if (b.dataset.act === 'work-sc') { openWorkplace(workSettings().shortcuts[+b.dataset.i]?.url); renderListPane(); }
     app.classList.remove('side-open');
   };
 }
 
 function switchProfile(p) {
+  if (p === 'work' && !D().accounts.some((a) => a.profile === 'work') && workSettings().autoOpen && S.view.profile !== 'work') openWorkplace();
   if (S.view.profile === p) return;
   S.view = { ...S.view, profile: p, account: 'all', label: '', search: '' };
   S.selected = ''; S.thread = null;
@@ -175,6 +183,9 @@ function viewTitle() {
 
 function renderListPane() {
   const lp = $('#listpane'); if (!lp) return;
+  const portal = workIsPortalOnly();
+  app.classList.toggle('work-mode', portal);
+  if (portal) { lp.onclick = null; renderWorkPanel(lp, { onSettings: () => openSettings('work'), onMenu: () => app.classList.add('side-open') }); return; }
   const needs = accountsInView().filter((a) => S.authNeeded.has(a.email));
   lp.innerHTML = `
     <div class="lhead">
@@ -229,6 +240,7 @@ function rowHtml(t) {
 }
 
 function renderList() {
+  if (workIsPortalOnly() || app.classList.contains('work-mode')) return renderListPane();
   const list = $('#list'); if (!list) return;
   const st = $('#lstatus');
   if (st) {
@@ -296,6 +308,7 @@ function rowMenu(row, t) {
 let loadSeq = 0;
 async function loadList({ more = false } = {}) {
   const seq = ++loadSeq;
+  if (workIsPortalOnly()) { S.threads = []; S.loading = false; renderListPane(); renderSide(); return; }
   const v = { ...S.view };
   const accts = accountsInView().filter((a) => !S.authNeeded.has(a.email));
   const cacheKey = `${v.profile}|${v.account}|${v.folder}|${v.label}`;

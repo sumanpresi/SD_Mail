@@ -2,11 +2,12 @@
 import { S, D, esc, icon, openModal, toast, emit, confirmBox, dropProvider, colorOf } from './core.js';
 import { signIn, forgetToken, getToken } from './auth.js';
 import { cacheClear } from './store.js';
+import { workSettings, isAllowedWorkUrl, openWorkplace, WORK_DEFAULTS } from './workplace.js';
 import { encodePayload, createTaskPayload, buildLifeOSUrl, isAllowedLifeOSUrl } from './lib.js';
 
 const COLORS = ['#3a6ea5', '#2f7d6d', '#b4583a', '#7a6ab8', '#a0782b', '#b05c9a', '#4f8a3c', '#c2453d', '#5f6f7a', '#d9822b'];
 const TABS = [
-  ['accounts', 'Accounts'], ['profiles', 'Profiles & Focus'], ['lifeos', 'LifeOS'], ['labels', 'Labels'],
+  ['accounts', 'Accounts'], ['work', 'Work (Government)'], ['profiles', 'Profiles & Focus'], ['lifeos', 'LifeOS'], ['labels', 'Labels'],
   ['notify', 'Notifications'], ['appearance', 'Appearance'], ['privacy', 'Privacy & Security'], ['data', 'Data & Sync'], ['about', 'About'],
 ];
 
@@ -53,6 +54,28 @@ const PANELS = {
     ${S.demo ? `<div class="note">You are in demo mode. To use your real Gmail, set the Google Client ID (see SETUP.md) and choose “Leave demo” in Data & Sync.</div>`
       : `<button class="btn primary" data-add>${icon('plus', 'sm')} Add Google / Gmail account</button>
       <div class="note">Gmail and Google Workspace accounts sign in on Google's own page — LifeMail never sees your password. Outlook and other providers are planned (the app is built for them), but not active yet.</div>`}`,
+
+  work: () => {
+    const w = workSettings();
+    return `
+    <h4>Government Workplace</h4>
+    <label class="field"><span>Workplace address</span><input id="wk-url" value="${esc(w.portalUrl)}" inputmode="url"></label>
+    <div class="field"><span>Sign-in page (used by the Government site)</span><div class="note" style="margin:0">${esc(w.authUrl)}</div></div>
+    <label class="check"><input type="checkbox" id="wk-auto" ${w.autoOpen ? 'checked' : ''}> <span>Open Workplace automatically when I tap <b>Work</b></span></label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 4px"><button class="btn primary" id="wk-open">${icon('external', 'sm')} Open Workplace</button></div>
+    <h4>Shortcuts</h4>
+    <div class="note">Open a page in Workplace (for example Mail or ToDo), copy its address from the ⋮ menu → Share/Copy link, and add it here. It will appear under Work in the sidebar.</div>
+    ${w.shortcuts.map((sc, i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)"><b style="flex:none">${esc(sc.name)}</b><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-3);font-size:12.5px">${esc(sc.url)}</span><button class="btn sm ghost danger" data-wk-rm="${i}">Remove</button></div>`).join('')}
+    <div class="row2" style="margin-top:10px"><input class="inp" id="wk-sc-name" placeholder="Name, e.g. Mail"><input class="inp" id="wk-sc-url" placeholder="https://workplace.mgovcloud.in/…" inputmode="url"></div>
+    <button class="btn" id="wk-sc-add" style="margin-top:8px">${icon('plus', 'sm')} Add shortcut</button>
+    <h4>How Work is kept separate and safe</h4>
+    <ul class="note" style="padding-left:28px;line-height:1.7">
+      <li>Workplace opens as the real Government website. You sign in there; LifeMail never sees or stores your Government password, OTP or authenticator code.</li>
+      <li>The Government site refuses to be shown inside other apps and blocks sign-in inside frames, so LifeMail does not embed it and does not route it through any server. On the installed app it opens on top of LifeMail; press Back to return.</li>
+      <li>Government mail is not copied into LifeMail, Google Drive or anywhere else. Its session is stored by the browser under the Government's own address, separate from LifeMail's Personal data.</li>
+      <li><b>Signing out / clearing the Work session:</b> use Sign out from your profile menu inside Workplace. On a shared device you can also remove mgovcloud.in under Chrome → Settings → Site settings → All sites.</li>
+    </ul>`;
+  },
 
   profiles: () => `
     <h4>Focus</h4>
@@ -136,6 +159,24 @@ const PANELS = {
 };
 
 const WIRE = {
+  work(panel, redraw) {
+    const q = (x) => panel.querySelector(x);
+    const setW = (fn) => set((d) => { d.work = { ...WORK_DEFAULTS, ...(d.work || {}) }; fn(d.work); });
+    q('#wk-url').onchange = (e) => {
+      const v = e.target.value.trim();
+      if (!isAllowedWorkUrl(v)) { toast('Use an https:// Government address (mgovcloud.in, gov.in or nic.in).', { err: true }); e.target.value = workSettings().portalUrl; return; }
+      setW((w) => { w.portalUrl = v; }); toast('Workplace address saved');
+    };
+    q('#wk-auto').onchange = (e) => setW((w) => { w.autoOpen = e.target.checked; });
+    q('#wk-open').onclick = () => openWorkplace();
+    q('#wk-sc-add').onclick = () => {
+      const name = q('#wk-sc-name').value.trim(); const url = q('#wk-sc-url').value.trim();
+      if (!name) return toast('Give the shortcut a name.', { err: true });
+      if (!isAllowedWorkUrl(url)) return toast('Use an https:// Government address (mgovcloud.in, gov.in or nic.in).', { err: true });
+      setW((w) => { w.shortcuts = [...(w.shortcuts || []), { name: name.slice(0, 40), url }].slice(0, 12); }); redraw();
+    };
+    panel.querySelectorAll('[data-wk-rm]').forEach((b) => (b.onclick = () => { setW((w) => { w.shortcuts = w.shortcuts.filter((_, i) => i !== +b.dataset.wkRm); }); redraw(); }));
+  },
   accounts(panel, redraw) {
     panel.oninput = panel.onchange = (e) => {
       const f = e.target.dataset.f; if (!f) return;

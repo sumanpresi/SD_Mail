@@ -3,7 +3,7 @@
 //   2. "+ Task" button → small panel → Send to LifeOS (opens LifeOS with the task pre-filled)
 //   3. Share → LifeOS (Android share sheet; LifeOS registers as a share target)
 import { S, D, esc, icon, openModal, toast, keyOf, emit, account } from './core.js';
-import { createTaskPayload, payloadToText, buildLifeOSUrl, suggestTask, PAYLOAD_MIME, isoDate, htmlToText, encodePayload } from './lib.js';
+import { createTaskPayload, payloadToText, buildLifeOSUrl, suggestTask, PAYLOAD_MIME, isoDate, htmlToText } from './lib.js';
 import { addLabelQuiet } from './actions.js';
 
 function defaultsFor(t, bodyText = '') {
@@ -40,7 +40,9 @@ export function payloadFor(t, taskOverrides) {
 // LifeOS (with lifemail-receiver.js) creates the task; the address also opens LifeOS directly.
 export function dragHref(t) {
   const p = payloadFor(t);
-  return buildLifeOSUrl(D().settings.lifeos.urlTemplate, p) || `${location.origin}/lifeos-kit/test-receiver.html?lifemail=${encodePayload(p)}`;
+  // With LifeOS connected: a link that creates the full task in LifeOS.
+  // Without it: the plain Gmail link, so other apps (e.g. a ToDo box) get something clean and readable.
+  return buildLifeOSUrl(D().settings.lifeos.urlTemplate, p) || p.emailUrl;
 }
 
 // ---------- drag ----------
@@ -49,7 +51,9 @@ export function startDrag(e, t) {
   const p = payloadFor(t);
   const dt = e.dataTransfer;
   dt.effectAllowed = 'copyLink';
-  dt.setData('text/plain', payloadToText(p));
+  const lifeosOn = !!D().settings.lifeos.urlTemplate;
+  // Readable text for any app; the machine-readable task line is only added when LifeOS is connected.
+  dt.setData('text/plain', lifeosOn ? payloadToText(p) : `${p.task.title} — ${p.senderName || p.senderEmail}\n${p.emailUrl}`);
   dt.setData('text/uri-list', p.emailUrl);
   dt.setData('text/html', `<a href="${esc(p.emailUrl)}">${esc(p.task.title)}</a><!-- lifemail-payload -->`);
   try { dt.setData(PAYLOAD_MIME, JSON.stringify(p)); } catch {}
