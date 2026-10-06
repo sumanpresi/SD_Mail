@@ -10,6 +10,7 @@
 //    The Government site's session lives in the browser under the Government's own address,
 //    completely separate from LifeMail's storage (different web origin).
 import { S, D, esc, icon, toast, $ } from './core.js';
+import { isAndroidApp, androidCall } from './bridge.js';
 
 export const WORK_DEFAULTS = {
   portalUrl: 'https://workplace.mgovcloud.in/',
@@ -33,6 +34,12 @@ export function openWorkplace(url) {
   const w = workSettings();
   const target = url && isAllowedWorkUrl(url) ? url : w.portalUrl;
   if (!navigator.onLine) { toast('Workplace requires an internet connection.', { err: true }); return false; }
+  if (isAndroidApp) {
+    // LifeMail Android app: Workplace opens INSIDE the app, in its own isolated Work browser.
+    androidCall('openWork', { url: target }).catch((e) => toast(e.message, { err: true }));
+    S.store.update((d) => { d.work = { ...WORK_DEFAULTS, ...(d.work || {}), lastOpened: Date.now() }; });
+    return true;
+  }
   // noopener + noreferrer: the Government site gets no handle on LifeMail and learns nothing about it.
   const win = window.open(target, '_blank', 'noopener,noreferrer');
   if (win === null && !document.hasFocus()) { /* opened in another app/tab; nothing to do */ }
@@ -63,7 +70,7 @@ export function renderWorkPanel(root, { onSettings, onMenu }) {
     </div>
     ${navigator.onLine ? '' : `<div class="note warn">${icon('alert', 'sm')} Workplace requires an internet connection.</div>`}
     <button class="btn primary work-open" data-work-open>${icon('external', 'sm')} Open Workplace</button>
-    <p class="work-sub">Mail, Calendar, ToDo, Notes, Contacts and Resources open in the Government's own secure page. Sign in there with your Government ID and authenticator code — LifeMail never sees them. Press Back to return here.</p>
+    <p class="work-sub">${isAndroidApp ? 'Workplace opens inside LifeMail in its own secure Work browser, separate from Personal.' : 'Mail, Calendar, ToDo, Notes, Contacts and Resources open in the Government\'s own secure page.'} Sign in there with your Government ID and authenticator code — LifeMail never sees them. Press Back to return here.</p>
     ${w.shortcuts.length ? `<div class="sec">Shortcuts</div><div class="work-shortcuts">${w.shortcuts.map((s, i) => `<button class="work-tile" data-work-sc="${i}">${icon('external', 'sm')}<span>${esc(s.name)}</span></button>`).join('')}</div>` : ''}
     <div class="work-meta">
       <div><span>Last opened</span><b>${esc(ago(w.lastOpened))}</b></div>

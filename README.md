@@ -16,6 +16,10 @@
 - Works offline for recently viewed lists; safe display of email (scripts blocked, tracking images hidden)
 - Installable from Chrome; keyboard shortcuts when a keyboard is attached
 
+## Android app
+
+Install the Android app for **Work inside LifeMail** (Government Workplace in a built-in browser). See **[ANDROID.md](ANDROID.md)** — download: <https://github.com/sumanpresi/SD_Mail/releases/latest>
+
 ## Work = Government Workplace
 
 Tapping **Work** opens the real Government Workplace (`https://workplace.mgovcloud.in/`) — Mail, Calendar, ToDo, Notes, Contacts, Resources.

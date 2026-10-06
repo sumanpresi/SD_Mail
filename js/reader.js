@@ -4,6 +4,7 @@ import { formatListDate, formatSize, initials, gmailWebUrl, escapeHtml } from '.
 import { archive, trash, spam, toggleStar, setUnread, toggleLabel, moveToInbox, allUserLabelNames } from './actions.js';
 import { openTaskPanel, shareTask, payloadFor, dragHref } from './task.js';
 import { openCompose } from './compose.js';
+import { isAndroidApp, androidSaveBlob } from './bridge.js';
 
 const SYSTEM = new Set(['INBOX', 'UNREAD', 'STARRED', 'IMPORTANT', 'SENT', 'DRAFT', 'SPAM', 'TRASH', 'CHAT']);
 export const userLabelIds = (ids = []) => ids.filter((id) => !SYSTEM.has(id) && !id.startsWith('CATEGORY_'));
@@ -105,7 +106,7 @@ function messageHtml(t, m, i) {
         <div class="an"><div title="${esc(a.filename)}">${esc(a.filename)}</div><small>${formatSize(a.size)}</small></div>
         <button class="iconbtn" data-a="att-open" data-m="${esc(m.id)}" data-k="${k}" title="Open" aria-label="Open ${esc(a.filename)}">${icon('external', 'sm')}</button>
         <button class="iconbtn" data-a="att-save" data-m="${esc(m.id)}" data-k="${k}" title="Download" aria-label="Download ${esc(a.filename)}">${icon('download', 'sm')}</button>
-        ${navigator.canShare ? `<button class="iconbtn" data-a="att-share" data-m="${esc(m.id)}" data-k="${k}" title="Share" aria-label="Share ${esc(a.filename)}">${icon('share', 'sm')}</button>` : ''}
+        ${navigator.canShare || isAndroidApp ? `<button class="iconbtn" data-a="att-share" data-m="${esc(m.id)}" data-k="${k}" title="Share" aria-label="Share ${esc(a.filename)}">${icon('share', 'sm')}</button>` : ''}
       </div>`).join('')}</div>` : ''}` : ''}
   </div>`;
 }
@@ -177,6 +178,7 @@ async function attachment(t, mid, k, mode) {
     toast('Downloading ' + a.filename + '…', { ms: 1500 });
     const data = a.data || await provider(t.account).getAttachment(m.id, a.attachmentId);
     const blob = await blobFromB64Url(data, a.mimeType);
+    if (isAndroidApp) { await androidSaveBlob(blob, a.filename, a.mimeType, mode); return; } // saved to the phone's Downloads
     if (mode === 'share') {
       const file = new File([blob], a.filename, { type: a.mimeType });
       if (navigator.canShare?.({ files: [file] })) return navigator.share({ files: [file], title: a.filename }).catch(() => {});

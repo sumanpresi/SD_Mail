@@ -2,6 +2,7 @@
 import { S, D, esc, icon, openModal, toast, emit, confirmBox, dropProvider, colorOf } from './core.js';
 import { signIn, forgetToken, getToken } from './auth.js';
 import { cacheClear } from './store.js';
+import { isAndroidApp, androidSaveBlob } from './bridge.js';
 import { workSettings, isAllowedWorkUrl, openWorkplace, WORK_DEFAULTS } from './workplace.js';
 import { encodePayload, createTaskPayload, buildLifeOSUrl, isAllowedLifeOSUrl } from './lib.js';
 
@@ -282,6 +283,7 @@ const WIRE = {
     q('#sync-now')?.addEventListener('click', async () => { await S.store.pull(); await S.store.push(); redraw(); toast(S.store.status === 'synced' ? 'Synced with Google Drive' : 'Sync problem: ' + (S.store.error || S.store.status), { err: S.store.status !== 'synced' }); });
     q('#export').onclick = () => {
       const blob = new Blob([S.store.exportJson()], { type: 'application/json' });
+      if (isAndroidApp) { androidSaveBlob(blob, `lifemail-backup-${new Date().toISOString().slice(0, 10)}.json`, 'application/json').catch((e) => toast(e.message, { err: true })); return; }
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `lifemail-backup-${new Date().toISOString().slice(0, 10)}.json`; a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     };

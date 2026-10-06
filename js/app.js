@@ -12,6 +12,7 @@ import { openCompose, editDraft } from './compose.js';
 import { openSettings, addAccount } from './settings.js';
 import { initBackNav, backNavChanged } from './backnav.js';
 import { renderWorkPanel, openWorkplace, workIsPortalOnly, workSettings } from './workplace.js';
+import { isAndroidApp, onAndroidEvent } from './bridge.js';
 
 const app = $('#app');
 const FOLDER_ICONS = { inbox: 'inbox', starred: 'star', snoozed: 'clock', drafts: 'file', sent: 'send', archive: 'archive', all: 'all', spam: 'spam', trash: 'trash' };
@@ -473,6 +474,10 @@ addEventListener('pointerdown', (e) => {
 }, true);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+// Android app: leaving the Work browser brings you back to Personal mail.
+onAndroidEvent('workClosed', () => { if (workIsPortalOnly() && $('#side')) switchProfile('personal'); });
+if (isAndroidApp) document.documentElement.classList.add('in-android-app');
 
 wireList();
 boot().catch((e) => { console.error(e); app.innerHTML = `<div class="empty">${icon('alert')}<h3>LifeMail could not start</h3><p>${esc(e.message)}</p></div>`; });

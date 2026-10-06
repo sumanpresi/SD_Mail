@@ -5,6 +5,7 @@
 import { S, D, esc, icon, openModal, toast, keyOf, emit, account } from './core.js';
 import { createTaskPayload, payloadToText, buildLifeOSUrl, suggestTask, PAYLOAD_MIME, isoDate, htmlToText } from './lib.js';
 import { addLabelQuiet } from './actions.js';
+import { isAndroidApp, androidCall } from './bridge.js';
 
 function defaultsFor(t, bodyText = '') {
   const ls = D().settings.lifeos;
@@ -85,6 +86,7 @@ export function wireDock(dock) {
 // ---------- send / share ----------
 export async function shareTask(p) {
   const text = payloadToText(p);
+  if (isAndroidApp) { try { await androidCall('shareText', { title: p.task.title, text }); return true; } catch { /* fall back to copy */ } }
   if (navigator.share) {
     try { await navigator.share({ title: p.task.title, text, url: p.emailUrl }); return true; } catch (e) { if (e.name === 'AbortError') return false; }
   }

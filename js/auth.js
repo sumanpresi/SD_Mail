@@ -2,6 +2,7 @@
 // Flow: open Google's consent page in a popup (or full-page redirect if popups are blocked),
 // Google returns a short-lived (1 hour) access token to /oauth.html, which hands it back here.
 import { CONFIG } from './config.js';
+import { isAndroidApp, androidCall } from './bridge.js';
 
 export const SCOPES = [
   'openid', 'email', 'profile',
@@ -78,8 +79,24 @@ export async function consumeResult(result) {
   return info;
 }
 
+// Inside the LifeMail Android app, Google sign-in goes through Android's own Google account system
+// (Google blocks its sign-in page inside embedded browsers). No password ever reaches LifeMail.
+async function androidSignIn(loginHint, silent) {
+  const hint = (loginHint || '').toLowerCase();
+  const old = hint && tokens[hint] ? tokens[hint].token : '';
+  const r = await androidCall('signIn', { hint, silent, oldToken: old });
+  const granted = r.scopes || [];
+  const missing = SCOPES.filter((s) => s.startsWith('https://') && !granted.includes(s));
+  if (missing.length) throw new Error('Please allow Gmail and Drive app data access — LifeMail cannot work without them.');
+  const info = await fetchUserInfo(r.accessToken);
+  // Android may hand back a cached token, so assume a shorter life and refresh early.
+  saveToken(info.email, r.accessToken, 45 * 60);
+  return info;
+}
+
 // Opens the Google screen. Resolves with {email,name,picture}.
 export function signIn({ loginHint = '', silent = false } = {}) {
+  if (isAndroidApp) return androidSignIn(loginHint, silent);
   if (!CONFIG.googleClientId) return Promise.reject(new Error('Google Client ID is not set yet. See SETUP.md, step 3.'));
   const prompt = silent ? 'none' : (loginHint ? '' : 'select_account consent');
   const url = authUrl({ loginHint, prompt, mode: 'popup' });
