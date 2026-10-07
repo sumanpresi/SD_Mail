@@ -1,7 +1,7 @@
 // LifeMail — main screen: boot, sidebar, email list, drag wiring, keyboard, notifications.
 import { CONFIG } from './config.js';
 import { S, D, $, esc, icon, provider, accountsInView, keyOf, colorOf, labelName, labelColor, labelIdByName, taskLinkFor, toast, openMenu, on, emit, modalOpen, account } from './core.js';
-import { signIn, completeRedirectIfAny, getToken, tokenExpiresIn } from './auth.js';
+import { signIn, completeRedirectIfAny, getToken, tokenExpiresIn, canRenewSilently, renewSilently } from './auth.js';
 import { cacheGet, cacheSet } from './store.js';
 import { DEMO_ACCOUNTS } from './demo.js';
 import { FOLDERS, folderById, formatListDate, initials, parseOpenHash, withinQuietHours } from './lib.js';
@@ -55,8 +55,25 @@ async function boot() {
 
 function checkAuth() {
   if (S.demo) return;
+  // Android app: an expired pass is renewed silently — never show "Session ended" for that.
+  if (canRenewSilently()) { keepSignedIn(); return; }
   for (const a of D().accounts) if (!getToken(a.email)) S.authNeeded.add(a.email); else S.authNeeded.delete(a.email);
 }
+
+// Renew Gmail passes before they run out (Android app: silently, every account, no tap needed).
+async function keepSignedIn() {
+  if (S.demo || !canRenewSilently() || !navigator.onLine) return;
+  let fixed = false; let lost = false;
+  for (const a of D().accounts) {
+    if (getToken(a.email) && tokenExpiresIn(a.email) > 10 * 60_000) continue;
+    const t = await renewSilently(a.email);
+    if (t) { if (S.authNeeded.delete(a.email)) fixed = true; }
+    else if (!getToken(a.email) && !S.authNeeded.has(a.email)) { S.authNeeded.add(a.email); lost = true; }
+  }
+  if (fixed) emit('reload');
+  else if (lost && $('#listpane') && document.activeElement?.id !== 'search') renderListPane();
+}
+setInterval(keepSignedIn, 60_000);
 
 function renderWelcome() {
   app.removeAttribute('aria-busy');
@@ -206,7 +223,7 @@ function renderListPane() {
       <button class="iconbtn" data-act="compose" title="Compose (c)" aria-label="Compose">${icon('compose')}</button>
     </div>
     <label class="searchbar">${icon('search', 'sm')}<input id="search" type="search" placeholder="Search mail (from:, subject:, has:attachment…)" value="${esc(S.view.search)}" enterkeyhint="search" aria-label="Search mail">${S.view.search ? `<button class="iconbtn" data-act="clear-search" aria-label="Clear search" style="width:28px;height:28px">${icon('x', 'sm')}</button>` : ''}</label>
-    ${needs.map((a) => `<div class="auth-banner"><span>Session ended for <b>${esc(a.email)}</b>.</span><button class="btn sm primary" data-reconnect="${esc(a.email)}">Reconnect</button></div>`).join('')}
+    ${needs.map((a) => `<div class="auth-banner"><span>Gmail access for <b>${esc(a.email)}</b> needs a quick refresh.</span><button class="btn sm primary" data-reconnect="${esc(a.email)}">Reconnect</button></div>`).join('')}
     ${S.view.search ? searchChips() : ''}
     <div class="status-strip" id="lstatus"></div>
     <div class="list" id="list" role="listbox" aria-label="Emails"></div>`;
@@ -565,7 +582,8 @@ let lastSilent = 0;
 addEventListener('pointerdown', (e) => {
   if (S.demo || !CONFIG.googleClientId || !D().accounts.length || Date.now() - lastSilent < 90_000) return;
   if (e.target.closest?.('[data-reconnect], .scrim')) return;
-  const due = D().accounts.find((a) => a.profile === S.view.profile && (S.authNeeded.has(a.email) || tokenExpiresIn(a.email) < 5 * 60_000));
+  if (canRenewSilently()) { keepSignedIn(); return; }
+  const due = D().accounts.find((a) => S.authNeeded.has(a.email) || tokenExpiresIn(a.email) < 10 * 60_000);
   if (!due) return;
   lastSilent = Date.now();
   signIn({ loginHint: due.email, silent: true })

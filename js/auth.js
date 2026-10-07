@@ -94,6 +94,27 @@ async function androidSignIn(loginHint, silent) {
   return info;
 }
 
+// Keeping you signed in. Google gives LifeMail a Gmail pass that lasts about an hour.
+// • In the Android app, a new pass is fetched silently from Android's Google account — no tap, no
+//   screen — shortly before the old one runs out, or whenever Gmail says it has expired.
+// • In a web browser, Google only allows renewing from a tap (it opens and closes a small window),
+//   so LifeMail renews on your next tap once less than 10 minutes are left.
+export const canRenewSilently = () => isAndroidApp;
+const renewing = new Map(); const renewFailedAt = {};
+export function renewSilently(email, { force = false } = {}) {
+  email = String(email || '').toLowerCase();
+  if (!isAndroidApp || !email) return Promise.resolve(null);
+  if (!force && getToken(email) && tokenExpiresIn(email) > 10 * 60_000) return Promise.resolve(getToken(email));
+  if (Date.now() - (renewFailedAt[email] || 0) < 60_000) return Promise.resolve(null); // don't hammer after a refusal
+  if (!renewing.has(email)) {
+    renewing.set(email, androidSignIn(email, true)
+      .then((info) => (info.email === email ? getToken(email) : null))
+      .catch(() => { renewFailedAt[email] = Date.now(); return null; })
+      .finally(() => renewing.delete(email)));
+  }
+  return renewing.get(email);
+}
+
 // Opens the Google screen. Resolves with {email,name,picture}.
 export function signIn({ loginHint = '', silent = false } = {}) {
   if (isAndroidApp) return androidSignIn(loginHint, silent);

@@ -1,7 +1,7 @@
 // GmailProvider — talks directly to the official Gmail API from the browser.
 // Every provider (Gmail now; Outlook/IMAP later) exposes the same methods, so the UI never
 // contains Gmail-specific code paths. See ARCHITECTURE.md.
-import { getToken } from './auth.js';
+import { getToken, renewSilently } from './auth.js';
 import { headerMap, parseAddress, extractParts, folderQuery, encodeB64Url, htmlToText } from './lib.js';
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -28,8 +28,8 @@ async function pool(items, limit, fn) {
 export class GmailProvider {
   constructor(account) { this.account = account; this.kind = 'gmail'; this.labelCache = null; this.threadCache = new Map(); }
 
-  async req(path, { method = 'GET', body, query, raw = false, retry = 2 } = {}) {
-    const token = getToken(this.account);
+  async req(path, { method = 'GET', body, query, raw = false, retry = 2, renewed = false } = {}) {
+    const token = getToken(this.account) || await renewSilently(this.account);
     if (!token) throw new AuthNeededError(this.account);
     const url = new URL(API + path);
     if (query) for (const [k, v] of Object.entries(query)) {
@@ -40,7 +40,11 @@ export class GmailProvider {
       method, headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     });
-    if (r.status === 401) throw new AuthNeededError(this.account);
+    if (r.status === 401) {
+      // pass expired early (or was withdrawn): get a fresh one silently and try once more
+      if (!renewed && await renewSilently(this.account, { force: true })) return this.req(path, { method, body, query, raw, retry, renewed: true });
+      throw new AuthNeededError(this.account);
+    }
     if (!r.ok) {
       let msg = r.statusText; try { msg = (await r.json()).error.message; } catch {}
       const quota = isQuotaError(r.status, msg);

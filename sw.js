@@ -1,6 +1,6 @@
 // LifeMail service worker: makes the app open instantly and offline.
 // It caches ONLY the app's own files. Email data from Google is never cached here.
-const VERSION = 'lifemail-v1.6.1';
+const VERSION = 'lifemail-v1.6.2';
 const SHELL = [
   '/', '/index.html', '/oauth.html', '/css/app.css', '/manifest.webmanifest',
   '/js/app.js', '/js/core.js', '/js/lib.js', '/js/auth.js', '/js/config.js', '/js/gmail.js', '/js/demo.js',

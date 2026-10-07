@@ -2,7 +2,7 @@
 // is saved as ONE small JSON file in the hidden "app data" folder of your Google Drive.
 // It never contains passwords or tokens. Emails themselves stay in Gmail.
 // A copy is kept on the device so the app opens instantly and works offline.
-import { getToken } from './auth.js';
+import { getToken, renewSilently } from './auth.js';
 import { CONFIG } from './config.js';
 
 const LOCAL_KEY = 'lm_data_v1';
@@ -80,11 +80,14 @@ export class Store {
 
   get driveAccount() { return this.data.storageAccount || this.data.accounts[0]?.email || ''; }
 
-  async driveReq(url, opts = {}) {
-    const token = getToken(this.driveAccount);
+  async driveReq(url, opts = {}, renewed = false) {
+    const token = getToken(this.driveAccount) || await renewSilently(this.driveAccount);
     if (!token) throw Object.assign(new Error('Drive sign-in needed'), { authNeeded: true, account: this.driveAccount });
     const r = await fetch(url, { ...opts, headers: { Authorization: 'Bearer ' + token, ...(opts.headers || {}) } });
-    if (r.status === 401) throw Object.assign(new Error('Drive sign-in needed'), { authNeeded: true, account: this.driveAccount });
+    if (r.status === 401) {
+      if (!renewed && await renewSilently(this.driveAccount, { force: true })) return this.driveReq(url, opts, true);
+      throw Object.assign(new Error('Drive sign-in needed'), { authNeeded: true, account: this.driveAccount });
+    }
     if (!r.ok) throw new Error('Google Drive: ' + r.status + ' ' + r.statusText);
     return r;
   }
