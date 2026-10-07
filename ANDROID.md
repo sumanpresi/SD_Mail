@@ -8,7 +8,7 @@ The Android app has two parts:
 | **Work** | **Government Workplace inside LifeMail** — Mail, Calendar, ToDo, Notes, Contacts, Resources | A real built-in browser showing `workplace.mgovcloud.in`. You sign in on the Government page (password + authenticator code) inside the app. |
 
 Tap **Work** in LifeMail → Workplace opens inside the app. The bar at the top has **✉ (back to Personal) · ← · → · ⟳ · 🔒 site name · ⋮**.
-The ⋮ menu has Reload, Workplace home, Desktop site, Full screen, Open in browser, Clear Work session, Back to Personal.
+The ⋮ menu has Reload, Workplace home, Desktop site, Text size (make the Workplace page more compact), Full screen, Open in browser, Clear Work session, Back to Personal.
 The phone's **Back** gesture steps back through Workplace pages first, then returns to Personal.
 
 ---

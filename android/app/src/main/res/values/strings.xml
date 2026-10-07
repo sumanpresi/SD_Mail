@@ -22,4 +22,5 @@
     <string name="downloading">Downloading %1$s…</string>
     <string name="download_unsupported">This file can\'t be downloaded inside LifeMail. Use \"Open in browser\".</string>
     <string name="session_cleared">Work session cleared</string>
+    <string name="text_size">Text size</string>
 </resources>

@@ -109,6 +109,7 @@ class WorkActivity : AppCompatActivity() {
         }
         defaultUa = web.settings.userAgentString
         applyDesktopMode(prefs.getBoolean("desktop", false), reloadPage = false)
+        prefs.getInt("textZoom", -1).let { if (it in 50..150) web.settings.textZoom = it }
 
         CookieManager.getInstance().apply {
             setAcceptCookie(true)                     // needed to stay signed in to Workplace
@@ -254,6 +255,7 @@ class WorkActivity : AppCompatActivity() {
         menu.menu.add(0, 1, 0, R.string.reload)
         menu.menu.add(0, 2, 1, R.string.home)
         menu.menu.add(0, 3, 2, R.string.desktop_site).apply { isCheckable = true; isChecked = prefs.getBoolean("desktop", false) }
+        menu.menu.add(0, 9, 2, R.string.text_size)
         menu.menu.add(0, 4, 3, if (fullScreen) R.string.exit_full_screen else R.string.full_screen)
         menu.menu.add(0, 5, 4, R.string.open_browser)
         menu.menu.add(0, 6, 5, R.string.clear_session)
@@ -265,6 +267,7 @@ class WorkActivity : AppCompatActivity() {
                 3 -> { val on = !prefs.getBoolean("desktop", false); prefs.edit().putBoolean("desktop", on).apply(); applyDesktopMode(on, reloadPage = true) }
                 4 -> setFullScreen(!fullScreen)
                 8 -> if (web.canGoForward()) web.goForward()
+                9 -> chooseTextSize()
                 5 -> Web.openInBrowser(this, web.url ?: home)
                 6 -> confirmClearSession()
                 7 -> goPersonal()
@@ -272,6 +275,27 @@ class WorkActivity : AppCompatActivity() {
             true
         }
         menu.show()
+    }
+
+    /**
+     * "Text size": the browser's own text-zoom setting (like Chrome's Accessibility → Text scaling).
+     * Smaller text lets the Workplace header and mail list fit more on screen. Nothing is injected
+     * into the Government page; this only changes how this built-in browser draws text.
+     */
+    private fun chooseTextSize() {
+        val sizes = intArrayOf(70, 80, 90, 100, 115)
+        val labels = arrayOf("Smallest (70%)", "Small (80%)", "Compact (90%)", "Normal (100%)", "Large (115%)")
+        val cur = web.settings.textZoom
+        val sel = sizes.indexOfFirst { it == cur }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.text_size)
+            .setSingleChoiceItems(labels, sel) { d, i ->
+                web.settings.textZoom = sizes[i]
+                prefs.edit().putInt("textZoom", sizes[i]).apply()
+                d.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     /** "Desktop site": the same switch Chrome has — asks the site for its computer layout. */
