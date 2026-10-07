@@ -11,6 +11,7 @@
 // • Only Gmail accounts. Government Workplace mail is never copied.
 // • "Remove email from this phone" (Settings → Offline & search) deletes the copy; signing out does too.
 import { headerMap, parseAddress, extractParts, htmlToText } from './lib.js';
+import { coolDown, QUOTA_PAUSE } from './gmail.js';
 import { parseQuery, matches, excerpt, groupThreads, peopleIndex, forget } from './search.js';
 
 const DBN = 'lifemail-mail';
@@ -197,6 +198,21 @@ async function pool(items, limit, fn) {
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => { while (i < items.length) { const k = i++; await fn(items[k], k); } }));
 }
+// Background downloading is paced so it never uses more than a small part of Gmail's per-minute
+// allowance (about 8 emails a second); if Gmail still says "too many", it waits a minute and continues.
+const GAP_MS = 125;
+const nextSlot = {};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export async function paced(account, fn) {
+  for (let attempt = 0; ; attempt++) {
+    const wait = Math.max(0, (coolDown[account] || 0) - Date.now());
+    if (wait) { emitStatus({ paused: true }); await sleep(wait); emitStatus({ paused: false }); }
+    const now = Date.now(); const at = Math.max(now, nextSlot[account] || 0); nextSlot[account] = at + GAP_MS;
+    if (at > now) await sleep(at - now);
+    try { return await fn(); }
+    catch (e) { if (!e.quota || attempt >= 4) throw e; coolDown[account] = Math.max(coolDown[account] || 0, Date.now() + QUOTA_PAUSE.ms); }
+  }
+}
 const isNetErr = (e) => e instanceof TypeError || /failed to fetch|networkerror|load failed|network request failed/i.test(e?.message || '');
 const running = new Set();
 
@@ -215,16 +231,16 @@ export async function syncAccount(account, inner) {
     }
     return await fullSync(account, inner, days, meta);
   } catch (e) {
-    if (!isNetErr(e) && !e.authNeeded) emitStatus({ lastError: `${account}: ${e.message}` });
+    if (!isNetErr(e) && !e.authNeeded && !e.quota) emitStatus({ lastError: `${account}: ${e.message}` });
     throw e;
   } finally { running.delete(account); if (!running.size) emitStatus({ syncing: '', progress: null }); }
 }
 
 async function fullSync(account, inner, days, meta) {
   emitStatus({ syncing: account, progress: { account, done: 0, total: 0, phase: 'list' } });
-  const historyId = await inner.currentHistoryId();
+  const historyId = await paced(account, () => inner.currentHistoryId());
   const q = ['-in:chats', days ? `newer_than:${days}d` : ''].filter(Boolean).join(' ');
-  const ids = await inner.listMessageIds({ q, max: maxFor(days) });
+  const ids = await paced(account, () => inner.listMessageIds({ q, max: maxFor(days) }));
   const keep = new Set(ids); const have = acctMap(account);
   const missing = ids.filter((id) => !have.has(id));
   // anything here that Gmail no longer lists (deleted, spam/trash, or older than the chosen period)
@@ -233,16 +249,16 @@ async function fullSync(account, inner, days, meta) {
   if (meta && have.size) {
     const stale = [...have.keys()];
     const fresh = [];
-    await pool(stale, 6, async (id) => { try { const r = await inner.getRawMessage(id, 'minimal'); fresh.push({ id, labelIds: r.labelIds || [] }); } catch (e) { if (isNetErr(e) || e.authNeeded) throw e; } });
+    await pool(stale, 3, async (id) => { try { const r = await paced(account, () => inner.getRawMessage(id, 'minimal')); fresh.push({ id, labelIds: r.labelIds || [] }); } catch (e) { if (isNetErr(e) || e.authNeeded) throw e; } });
     await setLabels(account, fresh);
   }
   let done = 0; let batch = [];
   emitStatus({ progress: { account, done, total: missing.length, phase: 'download' } });
-  await pool(missing, 4, async (id) => {
+  await pool(missing, 3, async (id) => {
     try {
-      const raw = await inner.getRawMessage(id, 'full');
+      const raw = await paced(account, () => inner.getRawMessage(id, 'full'));
       if (!SKIP_DOWNLOAD.some((l) => (raw.labelIds || []).includes(l))) batch.push(fromGmail(account, raw));
-    } catch (e) { if (isNetErr(e) || e.authNeeded) throw e; }
+    } catch (e) { if (isNetErr(e) || e.authNeeded || e.quota) throw e; }
     done++;
     if (batch.length >= 25) { const b = batch; batch = []; await putMany(b); }
     if (done % 10 === 0 || done === missing.length) emitStatus({ progress: { account, done, total: missing.length, phase: 'download' } });
@@ -253,7 +269,7 @@ async function fullSync(account, inner, days, meta) {
 }
 
 async function incremental(account, inner, meta, days) {
-  const h = await inner.historyChanges(meta.historyId);
+  const h = await paced(account, () => inner.historyChanges(meta.historyId));
   const have = acctMap(account);
   await removeMany(account, h.deleted.filter((id) => have.has(id)));
   await setLabels(account, h.labels);
@@ -261,7 +277,7 @@ async function incremental(account, inner, meta, days) {
   await setLabels(account, h.added.filter((a) => have.has(a.id)));
   const got = [];
   if (toFetch.length) emitStatus({ syncing: account, progress: { account, done: 0, total: toFetch.length, phase: 'new' } });
-  await pool(toFetch, 4, async (id) => { try { got.push(fromGmail(account, await inner.getRawMessage(id, 'full'))); } catch (e) { if (isNetErr(e) || e.authNeeded) throw e; } });
+  await pool(toFetch, 3, async (id) => { try { got.push(fromGmail(account, await paced(account, () => inner.getRawMessage(id, 'full')))); } catch (e) { if (isNetErr(e) || e.authNeeded || e.quota) throw e; } });
   await putMany(got);
   // keep only the chosen period (checked at most once an hour)
   if (days && Date.now() - (meta.pruned || 0) > 3600_000) {
@@ -345,12 +361,15 @@ export function wrapProvider(inner) {
     async listThreads(args) {
       if (on() && offline()) return { threads: await localThreads(account, args), nextPageToken: '', local: true };
       try { return await inner.listThreads(args); }
-      catch (e) { if (on() && isNetErr(e)) return { threads: await localThreads(account, args), nextPageToken: '', local: true }; throw e; }
+      catch (e) {
+        if (on() && (isNetErr(e) || e.quota)) { const threads = await localThreads(account, args); if (threads.length || isNetErr(e)) return { threads, nextPageToken: '', local: true, quota: !!e.quota }; }
+        throw e;
+      }
     },
     async getThread(id) {
       if (offline()) { const t = on() && await localThread(account, id); if (t) return t; throw new Error(NOT_SAVED); }
       try { const t = await inner.getThread(id); rememberThread(account, t); return t; }
-      catch (e) { if (isNetErr(e)) { const t = on() && await localThread(account, id); if (t) return t; throw new Error(NOT_SAVED); } throw e; }
+      catch (e) { if (isNetErr(e) || e.quota) { const t = on() && await localThread(account, id); if (t) return t; if (isNetErr(e)) throw new Error(NOT_SAVED); } throw e; }
     },
     async getAttachment(messageId, attachmentId) {
       const c = await cachedAttachment(account, messageId, attachmentId); if (c) return c;

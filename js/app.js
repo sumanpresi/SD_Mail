@@ -269,6 +269,19 @@ function hl(text) {
   try { return e.replace(new RegExp(`(${words.join('|')})`, 'gi'), '<mark>$1</mark>'); } catch { return e; }
 }
 
+// Errors while loading the list: one clear message (not one per account), at most once a minute for the Gmail limit.
+let lastQuotaToast = 0;
+function listError(acct, e) {
+  if (e.quota) {
+    if (Date.now() - lastQuotaToast < 60_000) return;
+    lastQuotaToast = Date.now();
+    toast(`Gmail asked LifeMail to slow down for a minute (too many requests). ${S.threads.length ? 'Showing the email saved on this device; ' : ''}LifeMail will refresh by itself shortly.`, { ms: 7000 });
+    setTimeout(() => { if (!modalOpen()) loadList(); }, 70_000);
+    return;
+  }
+  toast(`${acct ? acct + ': ' : ''}${e.message}`, { err: true });
+}
+
 function renderList() {
   if (workIsPortalOnly() || app.classList.contains('work-mode')) return renderListPane();
   const list = $('#list'); if (!list) return;
@@ -287,6 +300,10 @@ function renderList() {
   if (!accountsInView().length) {
     list.innerHTML = `<div class="empty">${icon('inbox')}<h3>No accounts here</h3><p>Add an account or assign one to ${esc(D().profiles[S.view.profile].name)} in Settings.</p><button class="btn primary" data-open-settings>Open Settings</button></div>`;
     list.querySelector('[data-open-settings]').onclick = () => openSettings('accounts');
+    return;
+  }
+  if (!S.threads.length && S.listFailed && !S.loading) {
+    list.innerHTML = `<div class="empty">${icon('alert')}<h3>Could not load from Gmail</h3><p>Gmail did not answer just now. Your email is safe — try again in a minute.</p><button class="btn" data-act="refresh">${icon('refresh', 'sm')} Try again</button></div>`;
     return;
   }
   if (!S.threads.length) {
@@ -347,6 +364,7 @@ async function loadList({ more = false, typeahead = false } = {}) {
   if (workIsPortalOnly()) { S.threads = []; S.loading = false; renderListPane(); renderSide(); return; }
   const v = { ...S.view };
   const offlineOn = !S.demo && OFF.offlineSettings().enabled;
+  if (!more) S.listFailed = false;
   const accts = accountsInView().filter((a) => !S.authNeeded.has(a.email));
   const cacheKey = `${v.profile}|${v.account}|${v.folder}|${v.label}`;
   if (!more) {
@@ -379,11 +397,13 @@ async function loadList({ more = false, typeahead = false } = {}) {
         return { a, ...r };
       } catch (e) {
         if (e.authNeeded) { S.authNeeded.add(a.email); return { a, threads: [] }; }
-        toast(`${a.email}: ${e.message}`, { err: true });
-        return { a, threads: [] };
+        listError(a.email, e);
+        return { a, threads: [], failed: true };
       }
     }));
     if (seq !== loadSeq) return;
+    S.listFailed = results.length > 0 && results.every((r) => r.failed);
+    if (results.some((r) => r.quota)) listError('', { quota: true, message: '' });
     const merged = results.flatMap((r) => r.threads);
     for (const r of results) S.pageTokens[r.a.email] = r.nextPageToken || '';
     const usedDevice = results.some((r) => r.local);

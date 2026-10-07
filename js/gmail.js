@@ -6,6 +6,13 @@ import { headerMap, parseAddress, extractParts, folderQuery, encodeB64Url, htmlT
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
+// Gmail allows each app a limited number of requests per user per minute. When LifeMail goes over,
+// Gmail answers 429 (or 403 "rate limit"). LifeMail then waits and retries instead of failing.
+export const QUOTA_MSG = 'Gmail is getting too many requests from LifeMail right now, so it paused us for a minute. LifeMail will slow down and try again automatically.';
+export function isQuotaError(status, text = '') { return status === 429 || (status === 403 && /rate ?limit|quota/i.test(text)); }
+export const coolDown = {}; // account → time until which background work should wait
+export const QUOTA_PAUSE = { ms: 65_000, retry: [2500, 7000] }; // (tests shorten these)
+
 export class AuthNeededError extends Error {
   constructor(account) { super('Session expired for ' + account); this.account = account; this.authNeeded = true; }
 }
@@ -34,12 +41,15 @@ export class GmailProvider {
       body: body ? JSON.stringify(body) : undefined,
     });
     if (r.status === 401) throw new AuthNeededError(this.account);
-    if ((r.status === 429 || r.status >= 500) && retry > 0) {
-      await new Promise((res) => setTimeout(res, (3 - retry) * 900 + 400));
-      return this.req(path, { method, body, query, raw, retry: retry - 1 });
-    }
     if (!r.ok) {
       let msg = r.statusText; try { msg = (await r.json()).error.message; } catch {}
+      const quota = isQuotaError(r.status, msg);
+      if (quota) coolDown[this.account] = Date.now() + QUOTA_PAUSE.ms;
+      if ((quota || r.status >= 500) && retry > 0) {
+        await new Promise((res) => setTimeout(res, quota ? QUOTA_PAUSE.retry[retry === 2 ? 0 : 1] : (3 - retry) * 900 + 400));
+        return this.req(path, { method, body, query, raw, retry: retry - 1 });
+      }
+      if (quota) throw Object.assign(new Error(QUOTA_MSG), { status: r.status, quota: true });
       throw Object.assign(new Error('Gmail: ' + msg), { status: r.status });
     }
     if (raw || r.status === 204) return r;

@@ -26,6 +26,7 @@ M = {
     'm5': msg('m5', 't5', 'Spammer <win@lottery.example>', 'You won', '<p>Claim now</p>', ['SPAM'], 0.5),
 }
 hist = {'id': 200, 'added': []}
+quota = {'left': 0}
 
 def handle(route):
     req = route.request; u = urlparse(req.url); path = u.path; q = parse_qs(u.query)
@@ -45,7 +46,11 @@ def handle(route):
         ids = [m['id'] for m in M.values() if NOW - int(m['internalDate']) < days * 864e5 and not set(m['labelIds']) & {'SPAM', 'TRASH'}]
         return j({'messages': [{'id': i} for i in ids]})
     mm = re.match(P + r'/messages/(m\d+)$', path)
-    if mm and req.method == 'GET': return j(M[mm.group(1)])
+    if mm and req.method == 'GET':
+        if quota['left'] > 0:
+            quota['left'] -= 1
+            return j({'error': {'code': 429, 'message': "Quota exceeded for quota metric 'Queries' and limit 'Queries per minute per user'"}}, 429)
+        return j(M[mm.group(1)])
     if path == P + '/threads':
         lab = q.get('labelIds', [None])[0]; qq = q.get('q', [''])[0]
         ok = lambda m: ('filename:pdf' not in qq or 'parts' in m['payload'] and len(m['payload']['parts']) > 1)
@@ -75,6 +80,9 @@ with sync_playwright() as p:
     pg = ctx.new_page(); errs = []
     pg.on('pageerror', lambda e: errs.append(str(e)))
     pg.route('**/js/config.js', lambda r: r.fulfill(content_type='text/javascript', body="export const CONFIG = { googleClientId: 'x.apps.googleusercontent.com', driveFileName: 'lifemail-data.json' };"))
+    quota['left'] = 4  # Gmail says "too many requests" a few times during the first download
+    pg.add_init_script("window.__shortQuota = true")
+    pg.route('**/js/gmail.js', lambda r: r.fulfill(content_type='text/javascript', body=open('js/gmail.js').read().replace('ms: 65_000, retry: [2500, 7000]', 'ms: 800, retry: [200, 300]')))
     pg.goto(BASE + '/'); pg.wait_for_selector('.row', timeout=10000)
 
     # ---- 1. first download (last 30 days by default) ----
@@ -86,7 +94,9 @@ with sync_playwright() as p:
     ids = pg.evaluate("async () => { const o = await import('/js/offline.js'); return (await o.localThreads('" + ME + "', { folderId: 'all' })).map(t => t.threadId); }")
     check('older than 30 days and spam are not downloaded', 't4' not in ids and 't5' not in ids, ids)
     full = [c for c in calls if re.search(r'/messages/m\d$', c[1]) and c[2].get('format') == ['full']]
-    check('each email downloaded once, with its text', len(full) == 3, [c[1] for c in full])
+    check('Gmail "too many requests": download pauses and still completes', quota['left'] == 0 and local_count(pg) == 3)
+    check('no raw Gmail quota error shown', 'Quota exceeded' not in pg.inner_text('#toasts'), pg.inner_text('#toasts'))
+    check('each email downloaded (retried ones too), with its text', len(set(c[1] for c in full)) == 3, [c[1] for c in full])
 
     # ---- 2. search as you type (from the device, no Gmail search needed) ----
     n_before = len([c for c in calls if c[1].endswith('/messages') or c[1].endswith('/threads')])

@@ -9,6 +9,7 @@
 // Each device remembers how far it has processed (a small marker on the device), so the same
 // email is not processed again unless you choose "Run on existing emails".
 import { S, D, provider, emit } from './core.js';
+import { paced } from './offline.js';
 import { normalizeRule, planForEmail, planChanges, rulesNeedFullEmail, ruleAppliesToAccount, evaluateRule } from './rules-engine.js';
 
 const SKIP = ['SENT', 'DRAFT', 'SPAM', 'TRASH', 'CHAT'];
@@ -46,7 +47,7 @@ export async function fetchRuleEmails(account, ids, rules) {
   const p = provider(account);
   const full = rulesNeedFullEmail(rules);
   const { byId } = await labelMaps(account);
-  const msgs = await pool(ids, 6, async (id) => { try { return await p.getRuleMessage(id, full); } catch (e) { if (e.authNeeded) throw e; return null; } });
+  const msgs = await pool(ids, 4, async (id) => { try { return await (S.demo ? p.getRuleMessage(id, full) : paced(account, () => p.getRuleMessage(id, full))); } catch (e) { if (e.authNeeded) throw e; return null; } });
   return msgs.filter((m) => m && !SKIP.some((l) => m.labelIds.includes(l))).map((m) => asRuleEmail(m, byId));
 }
 
@@ -137,7 +138,7 @@ export async function runRulesOnNew(account, { trigger = 'new' } = {}) {
     st[account] = { historyId, at: Date.now(), done: [...ids, ...(mine.done || [])].slice(0, 300) }; writeState(st);
     return result;
   } catch (e) {
-    if (!e.authNeeded) addLog(logEntries({ account, trigger, checked: 0, matched: [], ok: false, error: e.message }));
+    if (!e.authNeeded && !e.quota) addLog(logEntries({ account, trigger, checked: 0, matched: [], ok: false, error: e.message }));
     throw e;
   } finally { running.delete(account); }
 }
