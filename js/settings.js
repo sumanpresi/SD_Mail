@@ -4,11 +4,12 @@ import { signIn, forgetToken, getToken } from './auth.js';
 import { cacheClear } from './store.js';
 import { isAndroidApp, androidSaveBlob } from './bridge.js';
 import { workSettings, isAllowedWorkUrl, openWorkplace, WORK_DEFAULTS } from './workplace.js';
+import { mountLabels, mountRules } from './rules-ui.js';
 import { encodePayload, createTaskPayload, buildLifeOSUrl, isAllowedLifeOSUrl } from './lib.js';
 
 const COLORS = ['#3a6ea5', '#2f7d6d', '#b4583a', '#7a6ab8', '#a0782b', '#b05c9a', '#4f8a3c', '#c2453d', '#5f6f7a', '#d9822b'];
 const TABS = [
-  ['accounts', 'Accounts'], ['work', 'Work (Government)'], ['profiles', 'Profiles & Focus'], ['lifeos', 'LifeOS'], ['labels', 'Labels'],
+  ['accounts', 'Accounts'], ['work', 'Work (Government)'], ['profiles', 'Profiles & Focus'], ['lifeos', 'LifeOS'], ['labels', 'Labels'], ['rules', 'Email rules'],
   ['notify', 'Notifications'], ['appearance', 'Appearance'], ['privacy', 'Privacy & Security'], ['data', 'Data & Sync'], ['about', 'About'],
 ];
 
@@ -22,6 +23,7 @@ export function openSettings(tab = 'accounts') {
     el.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('on', b.dataset.tab === k));
     const panel = el.querySelector('#spanel');
     panel.innerHTML = PANELS[k]();
+    panel.onclick = panel.onchange = panel.oninput = panel.onkeydown = null;
     WIRE[k]?.(panel, () => show(k), m);
   };
   el.querySelector('.stabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (b) show(b.dataset.tab); };
@@ -109,14 +111,8 @@ const PANELS = {
     <label class="check"><input type="checkbox" id="lo-smart" ${D().settings.smartSuggest ? 'checked' : ''}> <span>Suggest task title, due date and priority from the email text <span class="hint" style="color:var(--ink-3)">— worked out on this device; no AI service, nothing sent anywhere</span></span></label>`;
   },
 
-  labels: () => {
-    const names = [...new Set([...Object.keys(D().labelColors), ...D().pinnedLabels, ...D().accounts.flatMap((a) => (S.labels[a.email] || []).filter((l) => l.type === 'user').map((l) => l.name))])].sort();
-    return `<h4>Labels</h4><div class="note">Labels are real Gmail labels. Pin the ones you use often to the sidebar and give them a colour.</div>
-    ${names.map((n) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
-      <label class="check" style="margin:0;flex:1"><input type="checkbox" data-pin="${esc(n)}" ${D().pinnedLabels.includes(n) ? 'checked' : ''}> ${esc(n)}</label>
-      <div class="colors" data-lc="${esc(n)}">${COLORS.slice(0, 8).map((c) => `<button style="background:${c};width:20px;height:20px" data-c="${c}" class="${D().labelColors[n] === c ? 'on' : ''}" aria-label="Colour"></button>`).join('')}</div></div>`).join('')}
-    <div style="display:flex;gap:8px;margin-top:12px"><input class="inp" id="newlabel" placeholder="New label name"><button class="btn" id="addlabel">Add</button></div>`;
-  },
+  labels: () => '',
+  rules: () => '',
 
   notify: () => `
     <h4>New-email notifications</h4>
@@ -154,7 +150,7 @@ const PANELS = {
     ${S.demo ? '<button class="btn" id="leave-demo" style="margin-left:8px">Leave demo</button>' : ''}`,
 
   about: () => `
-    <h4>LifeMail</h4><p>Turn email into action. Version 1.0.</p>
+    <h4>LifeMail</h4><p>Turn email into action. Version 1.5 — labels &amp; email rules.</p>
     <p class="note">Keyboard (with a keyboard attached): <b>j/k</b> next/previous · <b>Enter</b> open · <b>e</b> archive · <b>#</b> delete · <b>s</b> star · <b>u</b> unread · <b>l</b> label · <b>t</b> + Task · <b>r</b>/<b>a</b>/<b>f</b> reply/all/forward · <b>c</b> compose · <b>/</b> search.</p>
     <p class="note">Email sanitising by DOMPurify (Apache-2.0 / MPL-2.0).</p>`,
 };
@@ -240,21 +236,8 @@ const WIRE = {
       window.open(url, '_blank');
     };
   },
-  labels(panel, redraw) {
-    panel.onchange = (e) => {
-      const n = e.target.dataset.pin; if (!n) return;
-      set((d) => { d.pinnedLabels = e.target.checked ? [...new Set([...d.pinnedLabels, n])] : d.pinnedLabels.filter((x) => x !== n); });
-    };
-    panel.querySelectorAll('[data-lc]').forEach((c) => (c.onclick = (e) => {
-      const b = e.target.closest('[data-c]'); if (!b) return;
-      set((d) => { d.labelColors[c.dataset.lc] = b.dataset.c; }); redraw();
-    }));
-    panel.querySelector('#addlabel').onclick = () => {
-      const v = panel.querySelector('#newlabel').value.trim(); if (!v) return;
-      set((d) => { d.pinnedLabels = [...new Set([...d.pinnedLabels, v])]; if (!d.labelColors[v]) d.labelColors[v] = COLORS[Object.keys(d.labelColors).length % COLORS.length]; });
-      toast('Label added — it is created in Gmail the first time you use it'); redraw();
-    };
-  },
+  labels(panel, redraw, m) { mountLabels(panel, m); },
+  rules(panel, redraw, m) { mountRules(panel, m); },
   notify(panel) {
     panel.querySelector('#nt-on').onchange = async (e) => {
       if (e.target.checked && 'Notification' in window && Notification.permission !== 'granted') {

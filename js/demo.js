@@ -67,6 +67,34 @@ export class DemoProvider {
     return [...sys, ...store.customLabels[this.account].map((n) => ({ id: n, name: n, type: 'user' }))];
   }
   async ensureLabel(name) { if (!store.customLabels[this.account].includes(name)) store.customLabels[this.account].push(name); return name; }
+  async renameLabel(id, name) {
+    const L = store.customLabels[this.account]; const i = L.indexOf(id); if (i < 0) throw new Error('Label not found');
+    L[i] = name; for (const t of this.mine()) t.labels = t.labels.map((l) => (l === id ? name : l));
+    return { id: name, name };
+  }
+  async deleteLabel(id) {
+    store.customLabels[this.account] = store.customLabels[this.account].filter((l) => l !== id);
+    for (const t of this.mine()) t.labels = t.labels.filter((l) => l !== id);
+  }
+  async labelInfo(id) {
+    const ts = this.mine().filter((t) => t.labels.includes(id));
+    return { messages: ts.reduce((n, t) => n + t.messages.length, 0), threads: ts.length, unread: ts.filter((t) => t.labels.includes('UNREAD')).length };
+  }
+  // ---- email rules (demo labels are per conversation) ----
+  async listMessageIds({ q = '' } = {}) {
+    const days = +(q.match(/newer_than:(\d+)d/) || [])[1] || 3650;
+    return this.mine().filter((t) => !['SENT', 'DRAFT', 'TRASH', 'SPAM'].some((l) => t.labels.includes(l)))
+      .flatMap((t) => t.messages.filter((m) => !m.from.includes(this.account) && m.date > Date.now() - days * 86400_000).map((m) => m.id));
+  }
+  async getRuleMessage(id) {
+    const t = this.mine().find((x) => x.messages.some((m) => m.id === id)); if (!t) throw new Error('Not found');
+    const m = t.messages.find((x) => x.id === id); const a = parseAddress(m.from);
+    const atts = m.att.filter((x) => !x.inline).map((x) => x.filename);
+    return { id, threadId: t.id, date: m.date, labelIds: [...t.labels], from: m.from, fromEmail: a.email, fromName: a.name, to: m.to, cc: m.cc || '', subject: t.subject, body: htmlToText(m.html), attachments: atts, hasAttachment: atts.length > 0, snippet: htmlToText(m.html).slice(0, 120) };
+  }
+  async batchModify(ids, add = [], remove = []) { for (const id of ids) await this.modifyMessage(id, add, remove); }
+  async historyAddedIds(h) { return { historyId: h, messages: [] }; }
+
   async inboxUnread() { return this.mine().filter((t) => t.labels.includes('INBOX') && t.labels.includes('UNREAD') && !t.labels.includes('TRASH')).length; }
   summarize(t) {
     const last = t.messages[t.messages.length - 1];

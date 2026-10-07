@@ -13,6 +13,7 @@ import { openSettings, addAccount } from './settings.js';
 import { initBackNav, backNavChanged } from './backnav.js';
 import { renderWorkPanel, openWorkplace, workIsPortalOnly, workSettings } from './workplace.js';
 import { isAndroidApp, onAndroidEvent } from './bridge.js';
+import { runRulesOnNew, allRules } from './rules.js';
 
 const app = $('#app');
 const FOLDER_ICONS = { inbox: 'inbox', starred: 'star', snoozed: 'clock', drafts: 'file', sent: 'send', archive: 'archive', all: 'all', spam: 'spam', trash: 'trash' };
@@ -107,7 +108,9 @@ function renderSide() {
   const portalOnly = workIsPortalOnly();
   const inProfile = d.accounts.filter((a) => a.profile === v.profile);
   const labels = [...new Set([...d.pinnedLabels, ...inProfile.flatMap((a) => (S.labels[a.email] || []).filter((l) => l.type === 'user').map((l) => l.name))])]
-    .filter((n) => d.pinnedLabels.includes(n) || inProfile.some((a) => labelIdByName(a.email, n)));
+    .filter((n) => d.pinnedLabels.includes(n) || inProfile.some((a) => labelIdByName(a.email, n)))
+    .filter((n) => !(d.hiddenLabels || []).includes(n));
+  const activeRules = allRules().filter((r) => r.enabled).length;
   const prof = (k, ic) => `<button class="prof ${k} ${v.profile === k ? 'on' : ''}" data-profile="${k}" aria-pressed="${v.profile === k}">
       <span class="pi">${icon(ic)}</span><span class="pn">${esc(d.profiles[k].name)}</span>
       ${S.unread[k] ? `<span class="pc">${S.unread[k]}</span>` : ''}${d.focus && d.focus !== k ? `<span class="focus" title="Muted by Focus">${icon('moon', 'sm')}</span>` : ''}</button>`;
@@ -131,8 +134,9 @@ function renderSide() {
       ${inProfile.length === 0 && !portalOnly ? `<div class="note full-only" style="margin:8px">No accounts in ${esc(d.profiles[v.profile].name)} yet. <a href="#" data-act="settings-acc">Assign or add one</a>.</div>` : ''}
       ${portalOnly ? '' : `<div class="sec full-only">Mailboxes</div>
       ${FOLDERS.map((f) => `<button class="nav ${!v.label && v.folder === f.id && !v.search ? 'on' : ''}" data-folder="${f.id}" title="${f.name}" aria-label="${f.name}">${icon(FOLDER_ICONS[f.id])}<span class="t full-only">${f.name}</span>${f.id === 'inbox' && S.unread[v.profile] ? `<span class="n full-only">${S.unread[v.profile]}</span>` : ''}</button>`).join('')}
-      <div class="sec full-only">Labels</div>
-      <div class="full-only">${labels.map((n) => `<button class="nav ${v.label === n ? 'on' : ''}" data-label="${esc(n)}"><span class="dot" style="background:${labelColor(n) || 'var(--line-2)'}"></span><span class="t">${esc(n)}</span></button>`).join('') || '<div class="note" style="margin:4px 8px">No labels yet</div>'}</div>`}
+      <div class="sec sec-act full-only"><span>Labels</span><button data-act="labels-edit" title="Create, rename, colour or hide labels" aria-label="Edit labels">${icon('edit', 'sm')} Edit</button></div>
+      <div class="full-only">${labels.map((n) => `<button class="nav ${v.label === n ? 'on' : ''}" data-label="${esc(n)}"><span class="dot" style="background:${labelColor(n) || 'var(--line-2)'}"></span><span class="t">${esc(n)}</span></button>`).join('') || '<div class="note" style="margin:4px 8px">No labels yet</div>'}
+        <button class="nav" data-act="rules" title="Rules that label incoming email automatically">${icon('filter')}<span class="t">Email rules</span><span class="n">${activeRules ? activeRules + ' on' : ''}</span></button></div>`}
     </div>
     <div class="side-foot">
       <button class="nav full-only" data-act="compose">${icon('compose')}<span class="t">Compose</span></button>
@@ -150,6 +154,8 @@ function renderSide() {
     else if (b.dataset.act === 'compose') openCompose();
     else if (b.dataset.act === 'settings') openSettings();
     else if (b.dataset.act === 'settings-acc') openSettings('accounts');
+    else if (b.dataset.act === 'labels-edit') openSettings('labels');
+    else if (b.dataset.act === 'rules') openSettings('rules');
     else if (b.dataset.act === 'workplace') { openWorkplace(); renderListPane(); }
     else if (b.dataset.act === 'work-sc') { openWorkplace(workSettings().shortcuts[+b.dataset.i]?.url); renderListPane(); }
     app.classList.remove('side-open');
@@ -386,6 +392,8 @@ async function poll() {
     if (S.authNeeded.has(a.email) || !getToken(a.email)) continue;
     try {
       const p = provider(a.email);
+      // Email rules first, so new mail is labelled (or archived) before any notification.
+      try { await runRulesOnNew(a.email); } catch (e) { if (e.authNeeded) throw e; }
       if (!historyIds[a.email]) { historyIds[a.email] = await p.currentHistoryId(); continue; }
       const r = await p.newInboxMessages(historyIds[a.email]);
       historyIds[a.email] = r.historyId;
@@ -443,6 +451,7 @@ on('reload', () => { checkAuth(); renderSide(); renderListPane(); loadLabels(); 
 on('unread-delta', ({ profile, delta }) => { S.unread[profile] = Math.max(0, (S.unread[profile] || 0) + delta); renderSide(); });
 on('theme', () => { applyTheme(); renderReader($('#reader')); renderList(); });
 on('poll-restart', () => startPolling());
+on('rules-applied', async ({ created } = {}) => { if (created) await loadLabels(); if (!modalOpen()) loadList(); loadUnread(); });
 S.store.onChange(() => { if ($('#side')) renderSideDebounced(); });
 let sideT; function renderSideDebounced() { clearTimeout(sideT); sideT = setTimeout(renderSide, 80); }
 

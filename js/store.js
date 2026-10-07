@@ -20,6 +20,9 @@ export function defaultData() {
     focus: '', // '', 'personal' or 'work' — mutes the other profile's notifications
     labelColors: { 'Follow Up': '#d9822b', Awaiting: '#c2453d', Delegated: '#7a6ab8', NGDR: '#2f7d6d', GSI: '#3a6ea5', Finance: '#8a7a2e', Travel: '#b05c9a', LifeOS: '#4a7c3a' },
     pinnedLabels: ['Follow Up', 'Awaiting', 'Delegated', 'NGDR', 'GSI'],
+    hiddenLabels: [], // labels not shown in the sidebar (they still exist in Gmail)
+    rules: [],        // email rules — see js/rules-engine.js for the format
+    ruleLog: [],      // last runs: {at, account, trigger, rule, checked, matched, action, status, error}
     settings: {
       theme: 'system', density: 'comfortable', remoteImages: 'ask', notifications: false, pollSeconds: 90,
       smartSuggest: true,

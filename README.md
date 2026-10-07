@@ -16,6 +16,12 @@
 - Works offline for recently viewed lists; safe display of email (scripts blocked, tracking images hidden)
 - Installable from Chrome; keyboard shortcuts when a keyboard is attached
 
+## Labels & email rules
+- **Labels** (sidebar → Labels → *Edit*, or Settings → Labels): create, rename (sub-labels follow), colour, show/hide in the sidebar, delete (emails are never deleted), and see how many conversations each label has. These are your real Gmail labels.
+- **Email rules** (sidebar → *Email rules*): WHEN an email matches (from, from domain, to, cc, subject, email text, has attachment, attachment name — combined with AND / OR) THEN apply/remove a label, mark important, mark read, star or archive. Every rule is checked, so one email can get several labels.
+- **Test before you trust it:** “Test with existing emails” shows how many emails a rule would match and why; nothing changes until you choose *apply*. Open any email → ⋯ → *Test rules on this email* shows MATCHED / NOT MATCHED with ✓/✗ for each condition.
+- Rules run inside LifeMail whenever it is open (phone or computer) and first catch up on mail that arrived while it was closed. A run history is kept. Rules are saved in your Google Drive file, so every device uses the same rules. Rules never delete email; Archive must be confirmed.
+
 ## Android app
 
 Install the Android app for **Work inside LifeMail** (Government Workplace in a built-in browser). See **[ANDROID.md](ANDROID.md)** — download: <https://github.com/sumanpresi/SD_Mail/releases/latest>

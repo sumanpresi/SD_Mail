@@ -16,6 +16,8 @@ python3 -m http.server 8765 &        # serves the app locally
 node --test tests/*.test.mjs
 python3 tests/e2e.py
 python3 tests/gmail_mock.py
+python3 tests/rules.py        # labels + email rules (demo mode)
+python3 tests/rules_gmail.py  # email rules against a fake Gmail API
 ```
 
 ## What could not be tested here (please test on the Fold)

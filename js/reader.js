@@ -239,6 +239,10 @@ function onClick(e, t, root) {
         { label: 'Share to LifeOS / other app', icon: 'share', onClick: () => shareTask(p) },
         { label: 'Open in Gmail', icon: 'external', onClick: () => window.open(gmailWebUrl({ account: t.account, threadId: t.threadId, rfcMessageId: t.messages?.at(-1)?.rfcMessageId }), '_blank', 'noopener') },
         { label: 'Copy link to this email', icon: 'link', onClick: async () => { await navigator.clipboard?.writeText(p.lifemailUrl); toast('Link copied'); } },
+        { label: 'Test rules on this email', icon: 'filter', onClick: () => {
+          const m = [...(t.messages || [])].reverse().find((x) => !(x.labelIds || []).some((l) => l === 'SENT' || l === 'DRAFT')) || t.messages?.at(-1);
+          import('./rules-ui.js').then((r) => r.openRuleTest({ account: t.account, messageId: m?.id || t.messageId }));
+        } },
         { sep: true },
         { label: 'Report spam', icon: 'spam', onClick: () => spam(sum) },
         { label: 'Move to Inbox', icon: 'inbox', onClick: () => moveToInbox(sum) },

@@ -2,7 +2,7 @@
 // Every provider (Gmail now; Outlook/IMAP later) exposes the same methods, so the UI never
 // contains Gmail-specific code paths. See ARCHITECTURE.md.
 import { getToken } from './auth.js';
-import { headerMap, parseAddress, extractParts, folderQuery, encodeB64Url } from './lib.js';
+import { headerMap, parseAddress, extractParts, folderQuery, encodeB64Url, htmlToText } from './lib.js';
 
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -40,7 +40,7 @@ export class GmailProvider {
     }
     if (!r.ok) {
       let msg = r.statusText; try { msg = (await r.json()).error.message; } catch {}
-      throw new Error('Gmail: ' + msg);
+      throw Object.assign(new Error('Gmail: ' + msg), { status: r.status });
     }
     if (raw || r.status === 204) return r;
     return r.json();
@@ -60,6 +60,20 @@ export class GmailProvider {
     const l = await this.req('/labels', { method: 'POST', body: { name, labelListVisibility: 'labelShow', messageListVisibility: 'show' } });
     this.labelCache.push({ id: l.id, name: l.name, type: 'user', color: '' });
     return l.id;
+  }
+
+  async renameLabel(id, name) {
+    const l = await this.req('/labels/' + encodeURIComponent(id), { method: 'PATCH', body: { name } });
+    const c = this.labelCache?.find((x) => x.id === id); if (c) c.name = l.name;
+    return l;
+  }
+  async deleteLabel(id) {
+    await this.req('/labels/' + encodeURIComponent(id), { method: 'DELETE' });
+    if (this.labelCache) this.labelCache = this.labelCache.filter((x) => x.id !== id);
+  }
+  async labelInfo(id) {
+    const l = await this.req('/labels/' + encodeURIComponent(id));
+    return { messages: l.messagesTotal || 0, threads: l.threadsTotal || 0, unread: l.threadsUnread || 0 };
   }
 
   async inboxUnread() { const l = await this.req('/labels/INBOX'); return l.threadsUnread || 0; }
@@ -155,6 +169,52 @@ export class GmailProvider {
       if (!j.nextPageToken) break; pageToken = j.nextPageToken;
     }
     return '';
+  }
+
+  // ---- email rules ----
+  // Message ids matching a Gmail search, newest first (used for "Run on existing emails").
+  async listMessageIds({ q = '', max = 300 } = {}) {
+    const ids = []; let pageToken = '';
+    while (ids.length < max) {
+      const j = await this.req('/messages', { query: { q, maxResults: Math.min(100, max - ids.length), pageToken } });
+      ids.push(...(j.messages || []).map((m) => m.id));
+      if (!j.nextPageToken) break; pageToken = j.nextPageToken;
+    }
+    return ids;
+  }
+  // One email as the rules see it. Only headers unless a rule looks at the email text or attachment names.
+  async getRuleMessage(id, full = false) {
+    const m = await this.req('/messages/' + id, { query: full ? { format: 'full' } : { format: 'metadata', metadataHeaders: ['From', 'To', 'Cc', 'Subject'] } });
+    const h = headerMap(m.payload?.headers);
+    const from = parseAddress(h.from || '');
+    let body = ''; let attachments = [];
+    if (full) {
+      const parts = extractParts(m.payload);
+      body = (parts.text || htmlToText(parts.html || '')).slice(0, 30000);
+      attachments = parts.attachments.filter((a) => !a.inline).map((a) => a.filename);
+    }
+    return {
+      id: m.id, threadId: m.threadId, date: Number(m.internalDate) || 0, labelIds: m.labelIds || [],
+      from: h.from || '', fromEmail: from.email, fromName: from.name, to: h.to || '', cc: h.cc || '', subject: h.subject || '',
+      body, attachments, hasAttachment: full ? attachments.length > 0 : /multipart\/mixed/i.test(m.payload?.mimeType || ''),
+      snippet: decodeEntities(m.snippet || ''),
+    };
+  }
+  async batchModify(ids, add = [], remove = []) {
+    for (let i = 0; i < ids.length; i += 500) {
+      await this.req('/messages/batchModify', { method: 'POST', body: { ids: ids.slice(i, i + 500), addLabelIds: add, removeLabelIds: remove } });
+    }
+  }
+  // Every email that arrived since a point in Gmail's history (any folder). Throws {status:404} when that point is too old.
+  async historyAddedIds(startHistoryId) {
+    const ids = []; let pageToken = ''; let historyId = startHistoryId;
+    for (let i = 0; i < 20; i++) {
+      const j = await this.req('/history', { query: { startHistoryId, historyTypes: 'messageAdded', maxResults: 500, pageToken } });
+      for (const h of j.history || []) for (const a of h.messagesAdded || []) ids.push({ id: a.message.id, labelIds: a.message.labelIds || [] });
+      historyId = j.historyId || historyId;
+      if (!j.nextPageToken) break; pageToken = j.nextPageToken;
+    }
+    return { historyId, messages: ids };
   }
 
   // ---- new-mail polling (cheap: history API) ----
