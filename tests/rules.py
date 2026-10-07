@@ -141,8 +141,27 @@ with sync_playwright() as p:
     pg.locator('.rule-card').first.locator('[data-del]').click(); pg.locator('.scrim').last.locator('[data-ok]').click(); pg.wait_for_timeout(200)
     check('rule deleted', pg.locator('.rule-card').count() == 1)
 
+    # from a label straight to its rules
+    pg.click('.stabs [data-tab="labels"]'); pg.wait_for_selector('.lbl-row')
+    btn = pg.locator('.lbl-row', has_text='GSI Mail').locator('[data-lrules]')
+    check('label shows how many rules use it', '1 rule' in btn.inner_text(), btn.inner_text())
+    btn.click(); pg.wait_for_selector('.rule-filter')
+    check('label → only its rules shown, ready to edit', pg.locator('.rule-card').count() == 1 and 'GSI Work Emails' in pg.locator('.rule-card').inner_text() and pg.locator('.stabs [data-tab="rules"].on').count() == 1)
+    pg.click('[data-a="newfor"]'); pg.wait_for_selector('#r-name')
+    check('"another rule for this label" pre-fills the label', pg.locator('[data-al]').first.input_value() == 'GSI Mail')
+    pg.click('[data-a="back"]')
+    pg.click('.stabs [data-tab="labels"]'); pg.wait_for_selector('.lbl-row')
+    pg.locator('.lbl-row', has_text='Follow Up').locator('[data-lrules]').click(); pg.wait_for_selector('#r-name')
+    check('label without rules → new rule pre-filled with that label', pg.locator('[data-al]').first.input_value() == 'Follow Up' and pg.locator('#r-name').input_value() == 'Follow Up emails')
+    pg.click('[data-a="back"]'); pg.click('[data-a="showall"]') if pg.locator('[data-a="showall"]').count() else None
+
     # phone (folded Z Fold) layout
     pg.set_viewport_size({'width': 380, 'height': 800}); pg.wait_for_timeout(300)
+    pg.click('.stabs [data-tab="labels"]'); pg.wait_for_selector('.lbl-row'); pg.wait_for_timeout(200)
+    over = pg.evaluate("() => [...document.querySelectorAll('.spanel *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => e.className || e.tagName).slice(0,5)")
+    check('phone: labels list fits the screen', not over, over)
+    pg.screenshot(path=OUT + 'rules-labels-phone.png', full_page=True)
+    pg.click('.stabs [data-tab="rules"]'); pg.wait_for_selector('[data-a="new"]')
     pg.click('[data-a="new"]'); pg.click('[data-a="addc"]'); pg.wait_for_timeout(200)
     over = pg.evaluate("() => [...document.querySelectorAll('.spanel *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => e.className || e.tagName).slice(0,5)")
     check('phone: rule builder fits the screen', not over, over)

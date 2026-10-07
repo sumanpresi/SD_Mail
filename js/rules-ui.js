@@ -42,6 +42,7 @@ export function mountLabels(panel, m) {
         return `<div class="lbl-row ${hidden.has(e.name) ? 'is-hidden' : ''}">
           <button class="lbl-dot" data-colour="${esc(e.name)}" style="background:${c || 'var(--line-2)'}" title="Change colour" aria-label="Change colour of ${esc(e.name)}"></button>
           <div class="lbl-main"><b>${esc(e.name)}</b><small><span data-count="${esc(k)}">${!e.accounts.length ? 'Not created in Gmail yet — it is created the first time it is used' : cnt ? `${plural(cnt.threads, 'conversation')}${cnt.unread ? ` · ${cnt.unread} unread` : ''}` : 'Counting…'}</span>${e.accounts.length && accts.length > 1 ? ` · in ${e.accounts.length === accts.length ? 'all accounts' : e.accounts.map((x) => esc(x.account)).join(', ')}` : ''}</small></div>
+          ${(() => { const n = rulesUsingLabel(e.name).length; return `<button class="btn sm lbl-rules ${n ? 'has' : ''}" data-lrules="${esc(e.name)}" title="${n ? 'Edit the rules that put emails under this label' : 'Create a rule that puts emails under this label automatically'}">${icon('filter', 'sm')} ${n ? plural(n, 'rule') : 'Add rule'}</button>`; })()}
           <label class="switch" title="Show in sidebar"><input type="checkbox" data-show="${esc(e.name)}" ${hidden.has(e.name) ? '' : 'checked'}><span></span><em>${hidden.has(e.name) ? 'Hidden' : 'Shown'}</em></label>
           <button class="iconbtn" data-rename="${esc(e.name)}" title="Rename" aria-label="Rename ${esc(e.name)}">${icon('edit', 'sm')}</button>
           <button class="iconbtn danger" data-del="${esc(e.name)}" title="Delete label" aria-label="Delete ${esc(e.name)}">${icon('trash', 'sm')}</button>
@@ -72,6 +73,7 @@ export function mountLabels(panel, m) {
       await busy(async () => { const n = await createLabel(name, only ? [only] : signedIn().map((a) => a.email)); toast(`Label “${n}” created`); });
     } else if (d.colour !== undefined) { st.colour = st.colour === d.colour.toLowerCase() ? '' : d.colour.toLowerCase(); draw(); }
     else if (d.pick !== undefined) { set((x) => { if (d.pick) x.labelColors[d.for] = d.pick; else delete x.labelColors[d.for]; }); st.colour = ''; draw(); emit('side'); }
+    else if (d.lrules) gotoRules(m, d.lrules);
     else if (d.rename) { st.editing = d.rename.toLowerCase(); draw(); const i = panel.querySelector('#lbl-rename'); i.focus(); i.select(); }
     else if (d.cancel !== undefined) { st.editing = ''; draw(); }
     else if (d.save) {
@@ -101,10 +103,23 @@ export function mountLabels(panel, m) {
 }
 
 // ============================ RULES ============================
+// Opening the Rules tab from a label: show that label's rules, or start a new rule for it.
+let pending = null;
+function gotoRules(m, label) {
+  pending = { label };
+  const tab = m?.el.querySelector('[data-tab="rules"]');
+  if (tab) tab.click(); else import('./settings.js').then((s) => s.openSettings('rules'));
+}
+
 const PERIODS = [[7, 'Last 7 days', 300], [30, 'Last 30 days', 500], [90, 'Last 90 days', 1000], [365, 'Last 12 months', 1000]];
 
 export function mountRules(panel, m, startView) {
-  const st = { view: startView || 'list', draft: null, preview: null, previewFor: null, busy: '', period: 30, archiveOk: false, errors: [] };
+  const st = { view: startView || 'list', draft: null, preview: null, previewFor: null, busy: '', period: 30, archiveOk: false, errors: [], forLabel: '' };
+  const go = pending; pending = null;
+  if (go?.label) {
+    if (rulesUsingLabel(go.label).length) st.forLabel = go.label;
+    else { st.view = 'edit'; st.draft = newRule({ name: `${go.label} emails`, conditions: [{ field: 'fromDomain', op: 'contains', value: '' }], actions: [{ type: 'applyLabel', label: go.label }] }); }
+  }
   const saveRules = (list) => set((d) => { d.rules = list; });
 
   const draw = () => { panel.innerHTML = VIEWS[st.view](); wire[st.view]?.(); };
@@ -112,7 +127,9 @@ export function mountRules(panel, m, startView) {
 
   const VIEWS = {
     list: () => {
-      const rules = allRules(); const log = D().ruleLog || [];
+      const all = allRules(); const log = D().ruleLog || [];
+      const only = st.forLabel ? new Set(rulesUsingLabel(st.forLabel).map((r) => r.id)) : null;
+      const rules = all;
       return `<h4>Email rules</h4>
       <div class="note">A rule says: <b>WHEN</b> an email matches → <b>THEN</b> label it (or star, mark read…). Every rule is checked — one email can match several rules and get several labels. Rules run whenever LifeMail is open on your phone or computer, and first catch up on email that arrived while it was closed. They never delete email.</div>
       ${connectionNote(m)}
@@ -122,7 +139,8 @@ export function mountRules(panel, m, startView) {
         <button class="btn" data-a="existing" ${rules.some((r) => r.enabled) ? '' : 'disabled'}>Run on existing emails…</button>
       </div>
       ${st.busy ? `<div class="note">${esc(st.busy)}</div>` : ''}
-      <div class="rule-list">${rules.map((r, i) => { const s = summarizeRule(r); return `
+      ${only ? `<div class="note rule-filter">${icon('filter', 'sm')} <span>Showing the ${plural(only.size, 'rule')} that label emails <b>“${esc(st.forLabel)}”</b>. Tap <b>Edit</b> to change what goes into this label.</span><button class="btn sm" data-a="newfor">${icon('plus', 'sm')} Another rule for this label</button><button class="btn sm ghost" data-a="showall">Show all rules</button></div>` : ''}
+      <div class="rule-list">${rules.map((r, i) => { if (only && !only.has(r.id)) return ''; const s = summarizeRule(r); return `
         <div class="rule-card ${r.enabled ? '' : 'off'}">
           <div class="rule-top"><span class="rule-n">${i + 1}</span><b class="grow">${esc(r.name)}</b>
             <label class="switch"><input type="checkbox" data-toggle="${r.id}" ${r.enabled ? 'checked' : ''}><span></span><em>${r.enabled ? 'Active' : 'Off'}</em></label></div>
@@ -238,6 +256,8 @@ export function mountRules(panel, m, startView) {
           catch (err) { toast(err.message, { err: true }); }
           st.busy = ''; draw();
         } else if (d.a === 'existing') { st.view = 'existing'; st.preview = null; draw(); }
+        else if (d.a === 'showall') { st.forLabel = ''; draw(); }
+        else if (d.a === 'newfor') { st.draft = newRule({ name: `${st.forLabel} emails`, actions: [{ type: 'applyLabel', label: st.forLabel }] }); st.preview = null; st.errors = []; st.archiveOk = false; st.view = 'edit'; draw(); }
         else if (d.a === 'clearlog') { set((x) => { x.ruleLog = []; }); draw(); }
       };
       panel.onchange = (e) => {

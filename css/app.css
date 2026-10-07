@@ -481,3 +481,13 @@ body.is-dragging .drag-hint { transform: translate(-50%, 0); }
   .pv-subj { grid-column: 1 / -1; grid-row: 2; }
   .rule-k { width: 34px; }
 }
+.lbl-rules { flex: none; color: var(--ink-3); }
+.lbl-rules.has { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--line-2)); }
+.rule-filter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rule-filter > span { flex: 1 1 220px; }
+@media (max-width: 640px) {
+  .lbl-row { flex-wrap: wrap; }
+  .lbl-main { flex: 1 1 calc(100% - 40px); }
+  .lbl-rules { margin-left: 28px; }
+  .lbl-row .switch { margin-left: auto; }
+}
