@@ -2,6 +2,7 @@
 import { Store } from './store.js';
 import { GmailProvider } from './gmail.js';
 import { DemoProvider } from './demo.js';
+import { wrapProvider } from './offline.js';
 
 export const S = {
   store: new Store(),
@@ -27,7 +28,7 @@ export const on = (name, fn) => bus.addEventListener(name, (e) => fn(e.detail));
 
 const providers = new Map();
 export function provider(account) {
-  if (!providers.has(account)) providers.set(account, S.demo ? new DemoProvider(account) : new GmailProvider(account));
+  if (!providers.has(account)) providers.set(account, S.demo ? new DemoProvider(account) : wrapProvider(new GmailProvider(account)));
   return providers.get(account);
 }
 export function dropProvider(account) { providers.delete(account); }

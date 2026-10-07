@@ -13,7 +13,9 @@
 - Every converted email gets a ✓ Task badge and (optionally) the Gmail label "LifeOS"
 - **Settings and email→task links are stored in your Google Drive** (hidden app folder) — no Supabase, no server
 - Desktop-like 3-pane layout on the **Galaxy Z Fold** unfolded, single-pane when folded; light & dark mode
-- Works offline for recently viewed lists; safe display of email (scripts blocked, tracking images hidden)
+- **Works offline**: a copy of your recent Gmail (you choose 7 days to everything) is kept on the device — read, search, archive, star, label and even send without internet; changes go to Gmail when you are back online
+- **Fast search like Gmail/Outlook**: results as you type from the device copy, then older matches from Gmail; people suggestions, recent searches, filter chips (Unread, Attachment, Last 7 days…) and Gmail search words (`from:` `subject:` `has:attachment` `filename:` `label:` `is:unread` `after:01/10/2026` `"exact phrase"` `-word` `OR`)
+- Safe display of email (scripts blocked, tracking images hidden)
 - Installable from Chrome; keyboard shortcuts when a keyboard is attached
 
 ## Labels & email rules

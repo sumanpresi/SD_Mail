@@ -5,6 +5,7 @@ import { signIn, completeRedirectIfAny, getToken, tokenExpiresIn } from './auth.
 import { cacheGet, cacheSet } from './store.js';
 import { DEMO_ACCOUNTS } from './demo.js';
 import { FOLDERS, folderById, formatListDate, initials, parseOpenHash, withinQuietHours } from './lib.js';
+import { parseQuery } from './search.js';
 import { renderReader, openThread, userLabelIds, currentThreadAction, labelMenu } from './reader.js';
 import { archive, trash, toggleStar, setUnread, allUserLabelNames } from './actions.js';
 import { startDrag, endDrag, wireDock, openTaskPanel, shareTask, payloadFor, dragHref } from './task.js';
@@ -14,6 +15,8 @@ import { initBackNav, backNavChanged } from './backnav.js';
 import { renderWorkPanel, openWorkplace, workIsPortalOnly, workSettings } from './workplace.js';
 import { isAndroidApp, onAndroidEvent } from './bridge.js';
 import { runRulesOnNew, allRules } from './rules.js';
+import * as OFF from './offline.js';
+import { initSearchUI, saveRecentSearch } from './search-ui.js';
 
 const app = $('#app');
 const FOLDER_ICONS = { inbox: 'inbox', starred: 'star', snoozed: 'clock', drafts: 'file', sent: 'send', archive: 'archive', all: 'all', spam: 'spam', trash: 'trash' };
@@ -47,6 +50,7 @@ async function boot() {
   loadUnread();
   if (!S.demo) S.store.pull().then(() => { applyTheme(); renderSide(); });
   startPolling();
+  if (!S.demo) setTimeout(async () => { await flushOffline(); await syncOffline(); }, 2500);
 }
 
 function checkAuth() {
@@ -193,7 +197,7 @@ function renderListPane() {
   const portal = workIsPortalOnly();
   app.classList.toggle('work-mode', portal);
   if (portal) { lp.onclick = null; renderWorkPanel(lp, { onSettings: () => openSettings('work'), onMenu: () => app.classList.add('side-open') }); return; }
-  const needs = accountsInView().filter((a) => S.authNeeded.has(a.email));
+  const needs = navigator.onLine ? accountsInView().filter((a) => S.authNeeded.has(a.email)) : [];
   lp.innerHTML = `
     <div class="lhead">
       <button class="iconbtn phone-only" data-act="menu" aria-label="Menu">${icon('menu')}</button>
@@ -203,6 +207,7 @@ function renderListPane() {
     </div>
     <label class="searchbar">${icon('search', 'sm')}<input id="search" type="search" placeholder="Search mail (from:, subject:, has:attachment…)" value="${esc(S.view.search)}" enterkeyhint="search" aria-label="Search mail">${S.view.search ? `<button class="iconbtn" data-act="clear-search" aria-label="Clear search" style="width:28px;height:28px">${icon('x', 'sm')}</button>` : ''}</label>
     ${needs.map((a) => `<div class="auth-banner"><span>Session ended for <b>${esc(a.email)}</b>.</span><button class="btn sm primary" data-reconnect="${esc(a.email)}">Reconnect</button></div>`).join('')}
+    ${S.view.search ? searchChips() : ''}
     <div class="status-strip" id="lstatus"></div>
     <div class="list" id="list" role="listbox" aria-label="Emails"></div>`;
   lp.onclick = async (e) => {
@@ -218,12 +223,22 @@ function renderListPane() {
     if (a === 'compose') openCompose();
     if (a === 'clear-search') setView({ search: '' });
     if (a === 'more') loadList({ more: true });
+    if (a === 'chip') { const t = b.dataset.tok; const has = S.view.search.split(/\s+/).includes(t); const q = has ? S.view.search.split(/\s+/).filter((x) => x !== t).join(' ') : `${S.view.search} ${t}`.trim(); setView({ search: q }); }
   };
-  $('#search').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { const q = e.target.value.trim(); setView({ search: q, label: '' }); e.target.blur(); }
-    if (e.key === 'Escape') e.target.blur();
+  initSearchUI($('#search'), {
+    search: (q) => { saveRecentSearch(q); setView({ search: q, label: '' }); },
+    typeahead: (q) => { if (q === S.view.search) return; S.view.search = q; S.selected = ''; if (!q) { loadList(); return; } loadList({ typeahead: true }); },
+    canTypeahead: () => S.demo || (OFF.offlineSettings().enabled && OFF.localCount() > 0),
+    myEmails: () => D().accounts.map((a) => a.email),
+    threads: () => S.threads,
   });
   renderList();
+}
+
+const CHIPS = [['is:unread', 'Unread'], ['is:starred', 'Starred'], ['has:attachment', 'Attachment'], ['newer_than:7d', 'Last 7 days'], ['newer_than:30d', 'Last 30 days'], ['in:sent', 'Sent']];
+function searchChips() {
+  const toks = S.view.search.split(/\s+/);
+  return `<div class="search-chips" role="group" aria-label="Filter results">${CHIPS.map(([t, n]) => `<button class="schip ${toks.includes(t) ? 'on' : ''}" data-act="chip" data-tok="${t}" aria-pressed="${toks.includes(t)}">${toks.includes(t) ? icon('check', 'sm') : ''}${n}</button>`).join('')}</div>`;
 }
 
 function rowHtml(t) {
@@ -238,12 +253,20 @@ function rowHtml(t) {
     <div style="min-width:0">
       <span class="udot"></span>
       <div class="r1"><span class="who">${esc(who)}${t.count > 1 ? `<span class="cnt">${t.count}</span>` : ''}</span><span class="when">${esc(formatListDate(t.date))}</span></div>
-      <div class="subj">${esc(t.subject)}</div>
-      <div class="snip">${esc(t.snippet)}</div>
+      <div class="subj">${hl(t.subject)}</div>
+      <div class="snip">${hl(t.snippet)}</div>
       <div class="r4">${linked ? `<span class="chip task">${icon('check', 'sm')} Task</span>` : ''}${chips.map((n) => { const c = labelColor(n); return `<span class="chip" ${c ? `style="background:${c}22;color:${c}"` : ''}>${esc(n)}</span>`; }).join('')}${t.hasAttachment ? `<span class="attach-ind" title="Has attachment">${icon('clip', 'sm')}</span>` : ''}</div>
     </div>
     <button class="rstar ${t.starred ? 'on' : ''}" data-star aria-label="${t.starred ? 'Unstar' : 'Star'}" tabindex="-1">${icon('star', 'sm')}</button>
   </div>`;
+}
+
+// Mark the searched words in the list (like Gmail / Outlook).
+function hl(text) {
+  const e = esc(text); if (!S.view.search) return e;
+  const words = parseQuery(S.view.search).terms.filter((w) => w.length > 1).map((w) => esc(w).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!words.length) return e;
+  try { return e.replace(new RegExp(`(${words.join('|')})`, 'gi'), '<mark>$1</mark>'); } catch { return e; }
 }
 
 function renderList() {
@@ -251,8 +274,14 @@ function renderList() {
   const list = $('#list'); if (!list) return;
   const st = $('#lstatus');
   if (st) {
+    const os = OFF.offlineState();
+    const pend = os.pending ? ` · ${os.pending} change${os.pending > 1 ? 's' : ''} waiting to be sent` : '';
+    const prog = os.progress && os.progress.total ? `Saving email for offline use: ${os.progress.done.toLocaleString()} of ${os.progress.total.toLocaleString()}` : '';
     st.className = 'status-strip' + (!S.online ? ' off' : '');
-    st.textContent = !S.online ? `Offline${S.fromCache ? ' · showing copy from ' + new Date(S.fromCache).toLocaleString([], { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) : ''}` : S.fromCache ? 'Showing saved copy · refreshing…' : '';
+    st.textContent = !S.online
+      ? `Offline · ${S.fromLocal ? 'showing email saved on this device' : S.fromCache ? 'showing copy from ' + new Date(S.fromCache).toLocaleString([], { hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' }) : 'nothing saved for this view'}${pend}`
+      : S.view.search && S.fromLocal ? `${S.loading ? 'Found on this device · searching Gmail too…' : `${S.threads.length} result${S.threads.length === 1 ? '' : 's'} · this device + Gmail`}${pend}`
+      : S.fromCache ? 'Showing saved copy · refreshing…' : (prog || pend.replace(/^ · /, ''));
   }
   if (S.loading && !S.threads.length) { list.innerHTML = '<div class="skel"></div>'.repeat(7); return; }
   if (!accountsInView().length) {
@@ -261,7 +290,7 @@ function renderList() {
     return;
   }
   if (!S.threads.length) {
-    list.innerHTML = `<div class="empty">${icon(S.view.search ? 'search' : 'check')}<h3>${S.view.search ? 'Nothing found' : 'All clear'}</h3><p>${S.view.search ? 'Try different words, or search a different profile.' : 'No email here.'}</p></div>`;
+    list.innerHTML = `<div class="empty">${icon(S.view.search ? 'search' : 'check')}<h3>${S.view.search ? 'Nothing found' : 'All clear'}</h3><p>${S.view.search ? (!S.online ? 'Nothing in the email saved on this device. Older email can be searched when you are back online.' : 'Try different words, or search a different profile. Tip: from:name, subject:word, has:attachment, after:01/10/2026.') : !S.online && !S.demo ? 'No email saved on this device for this view.' : 'No email here.'}</p></div>`;
     return;
   }
   const more = Object.values(S.pageTokens).some(Boolean);
@@ -313,10 +342,11 @@ function rowMenu(row, t) {
 }
 
 let loadSeq = 0;
-async function loadList({ more = false } = {}) {
+async function loadList({ more = false, typeahead = false } = {}) {
   const seq = ++loadSeq;
   if (workIsPortalOnly()) { S.threads = []; S.loading = false; renderListPane(); renderSide(); return; }
   const v = { ...S.view };
+  const offlineOn = !S.demo && OFF.offlineSettings().enabled;
   const accts = accountsInView().filter((a) => !S.authNeeded.has(a.email));
   const cacheKey = `${v.profile}|${v.account}|${v.folder}|${v.label}`;
   if (!more) {
@@ -329,6 +359,15 @@ async function loadList({ more = false } = {}) {
     if (!S.fromCache) S.threads = [];
     renderList();
   }
+  // Offline, or searching: answer from the copy on this device straight away (works without internet).
+  const fromDevice = offlineOn && !more && (!navigator.onLine || v.search);
+  if (fromDevice) {
+    const local = (await Promise.all(accountsInView().map((a) => OFF.localThreads(a.email, { folderId: v.search ? 'all' : v.folder, labelId: v.label ? labelIdByName(a.email, v.label) : '', search: v.search }).catch(() => [])))).flat().sort((x, y) => y.date - x.date);
+    if (seq !== loadSeq) return;
+    S.threads = local; S.fromCache = 0; S.localCount = local.length; S.fromLocal = true;
+    if (!navigator.onLine || typeahead) { S.loading = false; S.online = navigator.onLine; const h = $('#listpane .lhead h1'); if (h) h.innerHTML = viewTitle(); renderList(); return; }
+    renderList();
+  } else { S.fromLocal = false; S.localCount = 0; }
   if (!navigator.onLine && !S.demo) { S.loading = false; S.online = false; renderList(); return; }
   try {
     const results = await Promise.all(accts.map(async (a) => {
@@ -347,24 +386,33 @@ async function loadList({ more = false } = {}) {
     if (seq !== loadSeq) return;
     const merged = results.flatMap((r) => r.threads);
     for (const r of results) S.pageTokens[r.a.email] = r.nextPageToken || '';
-    const base = more ? S.threads : [];
+    const usedDevice = results.some((r) => r.local);
+    // search: keep results found on this device that Gmail's search did not return (and vice versa)
+    const base = more ? S.threads : (fromDevice && v.search ? S.threads.filter((t) => !merged.some((m) => keyOf(m) === keyOf(t))) : []);
+    S.gmailCount = v.search ? merged.length : 0; S.fromLocal = usedDevice || (fromDevice && v.search);
     const seen = new Set(base.map(keyOf));
     S.threads = [...base, ...merged.filter((t) => !seen.has(keyOf(t)))].sort((x, y) => y.date - x.date);
     S.fromCache = 0; S.online = true;
     if (!more && !v.search) cacheSet(cacheKey, S.threads.slice(0, 60));
   } finally {
-    if (seq === loadSeq) { S.loading = false; renderListPane(); renderSide(); }
+    if (seq === loadSeq) {
+      S.loading = false;
+      // while typing in the search box, redraw only the results — the box (and the keyboard) stay put
+      if (typeahead && document.activeElement?.id === 'search') { const h = $('#listpane .lhead h1'); if (h) h.innerHTML = viewTitle(); renderList(); }
+      else renderListPane();
+      renderSide();
+    }
   }
 }
 
 async function loadLabels() {
-  const list = D().accounts.filter((a) => a.profile === S.view.profile && !S.authNeeded.has(a.email));
+  const list = D().accounts.filter((a) => a.profile === S.view.profile && (!S.authNeeded.has(a.email) || !navigator.onLine));
   await Promise.all(list.map(async (a) => { try { S.labels[a.email] = await provider(a.email).listLabels(true); } catch (e) { if (e.authNeeded) S.authNeeded.add(a.email); } }));
   renderSide();
 }
 async function loadUnread() {
   for (const p of ['personal', 'work']) {
-    const accts = D().accounts.filter((a) => a.profile === p && !S.authNeeded.has(a.email));
+    const accts = D().accounts.filter((a) => a.profile === p && (!S.authNeeded.has(a.email) || !navigator.onLine));
     const n = await Promise.all(accts.map((a) => provider(a.email).inboxUnread().catch(() => 0)));
     S.unread[p] = n.reduce((s, x) => s + x, 0);
   }
@@ -387,6 +435,7 @@ function handleHash() {
 let pollTimer = null; const historyIds = {};
 async function poll() {
   if (S.demo || !navigator.onLine) return;
+  if (OFF.offlineState().pending) await flushOffline();
   const d = D();
   for (const a of d.accounts) {
     if (S.authNeeded.has(a.email) || !getToken(a.email)) continue;
@@ -394,6 +443,7 @@ async function poll() {
       const p = provider(a.email);
       // Email rules first, so new mail is labelled (or archived) before any notification.
       try { await runRulesOnNew(a.email); } catch (e) { if (e.authNeeded) throw e; }
+      OFF.syncAccount(a.email, p.inner).catch(() => {}); // keep the offline copy up to date (only changes travel)
       if (!historyIds[a.email]) { historyIds[a.email] = await p.currentHistoryId(); continue; }
       const r = await p.newInboxMessages(historyIds[a.email]);
       historyIds[a.email] = r.historyId;
@@ -455,8 +505,29 @@ on('rules-applied', async ({ created } = {}) => { if (created) await loadLabels(
 S.store.onChange(() => { if ($('#side')) renderSideDebounced(); });
 let sideT; function renderSideDebounced() { clearTimeout(sideT); sideT = setTimeout(renderSide, 80); }
 
-addEventListener('online', () => { S.online = true; renderList(); loadList(); if (!S.demo) S.store.push(); });
-addEventListener('offline', () => { S.online = false; renderList(); });
+addEventListener('online', async () => {
+  S.online = true; renderListPane(); renderList();
+  if (!S.demo) { S.store.push(); await flushOffline(); syncOffline(); }
+  loadList(); loadUnread();
+});
+addEventListener('offline', () => { S.online = false; renderListPane(); loadList(); });
+
+// ---------------- offline copy ----------------
+async function flushOffline() {
+  const r = await OFF.flushOutbox((acct) => provider(acct).inner || provider(acct)).catch(() => null);
+  if (r?.sent) toast(`Back online · ${r.sent} offline change${r.sent > 1 ? 's' : ''} sent to Gmail${r.failed.length ? ` (${r.failed.length} could not be applied: ${r.failed[0].error})` : ''}`, { err: !!r.failed.length, ms: 6000 });
+}
+async function syncOffline() {
+  if (S.demo || !navigator.onLine || !OFF.offlineSettings().enabled) return;
+  for (const a of D().accounts) {
+    if (S.authNeeded.has(a.email) || !getToken(a.email)) continue;
+    try { await OFF.syncAccount(a.email, provider(a.email).inner); } catch (e) { if (e.authNeeded) S.authNeeded.add(a.email); }
+  }
+}
+OFF.setLabelResolver((acct, id) => labelName(acct, id));
+let stT; OFF.onOfflineStatus(() => { clearTimeout(stT); stT = setTimeout(() => { if ($('#lstatus')) renderList(); }, 300); });
+on('offline-status', () => OFF.flushOutbox(() => null).catch(() => {}));
+on('offline-sync', () => syncOffline());
 addEventListener('hashchange', handleHash);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if ($('#reader')) { applyTheme(); renderReader($('#reader')); } });
 // Re-render reader when crossing the phone breakpoint (fold / unfold)

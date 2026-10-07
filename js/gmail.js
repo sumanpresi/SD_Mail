@@ -176,7 +176,7 @@ export class GmailProvider {
   async listMessageIds({ q = '', max = 300 } = {}) {
     const ids = []; let pageToken = '';
     while (ids.length < max) {
-      const j = await this.req('/messages', { query: { q, maxResults: Math.min(100, max - ids.length), pageToken } });
+      const j = await this.req('/messages', { query: { q, maxResults: Math.min(500, max - ids.length), pageToken } });
       ids.push(...(j.messages || []).map((m) => m.id));
       if (!j.nextPageToken) break; pageToken = j.nextPageToken;
     }
@@ -215,6 +215,24 @@ export class GmailProvider {
       if (!j.nextPageToken) break; pageToken = j.nextPageToken;
     }
     return { historyId, messages: ids };
+  }
+
+  // ---- offline copy (js/offline.js) ----
+  getRawMessage(id, format = 'full') { return this.req('/messages/' + id, { query: { format } }); }
+  // Everything that changed since a point in history: new, deleted and re-labelled messages.
+  async historyChanges(startHistoryId) {
+    const added = new Map(); const deleted = new Set(); const labels = new Map(); let pageToken = ''; let historyId = startHistoryId;
+    for (let i = 0; i < 30; i++) {
+      const j = await this.req('/history', { query: { startHistoryId, historyTypes: ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'], maxResults: 500, pageToken } });
+      for (const h of j.history || []) {
+        for (const a of h.messagesAdded || []) { added.set(a.message.id, a.message.labelIds || []); deleted.delete(a.message.id); }
+        for (const d of h.messagesDeleted || []) { deleted.add(d.message.id); added.delete(d.message.id); labels.delete(d.message.id); }
+        for (const l of [...(h.labelsAdded || []), ...(h.labelsRemoved || [])]) { if (added.has(l.message.id)) added.set(l.message.id, l.message.labelIds || []); else labels.set(l.message.id, l.message.labelIds || []); }
+      }
+      historyId = j.historyId || historyId;
+      if (!j.nextPageToken) break; pageToken = j.nextPageToken;
+    }
+    return { historyId, added: [...added].map(([id, labelIds]) => ({ id, labelIds })), deleted: [...deleted], labels: [...labels].map(([id, labelIds]) => ({ id, labelIds })) };
   }
 
   // ---- new-mail polling (cheap: history API) ----

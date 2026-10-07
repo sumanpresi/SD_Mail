@@ -155,7 +155,8 @@ export function openCompose({ mode = 'new', thread = null, to = '' } = {}) {
       const b = await build();
       if (!b.hasRecipient) throw new Error('Add at least one recipient.');
       if (!q('#c-subj').value.trim() && !(await confirmBox('Send without a subject?', 'Send'))) { busy(false); return; }
-      await provider(b.fromEmail).send(b.mime, b.threadId);
+      const sent = await provider(b.fromEmail).send(b.mime, b.threadId);
+      if (sent?.queued) { m.close(); toast('You are offline — this email is in the Outbox and will be sent automatically when you are back online.', { ms: 7000 }); emit('offline-status'); return; }
       if (state.draftId) provider(b.fromEmail).deleteDraft(state.draftId).catch(() => {});
       else if (state.editingDraftMessage) { const id = await provider(b.fromEmail).findDraftId(state.editingDraftMessage).catch(() => ''); if (id) provider(b.fromEmail).deleteDraft(id).catch(() => {}); }
       m.close(); toast(S.demo ? 'Sent (demo — nothing actually emailed)' : 'Sent');

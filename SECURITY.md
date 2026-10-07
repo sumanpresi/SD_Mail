@@ -24,11 +24,11 @@ You can withdraw access at any time at <https://myaccount.google.com/permissions
 
 | Data | Stored where | Contains secrets? |
 |---|---|---|
-| Your email | Gmail only. A short list (sender, subject, preview of the latest ~60) is cached on the device for offline viewing | No |
+| Your email | Gmail. **Plus an offline copy on this device** (Settings → Offline & search; on by default, last 30 days): text, headers, pictures inside emails, and attachments you have opened — in the device's private app storage (IndexedDB), never in Google Drive or anywhere else. Spam/Trash are not copied; Government Workplace mail is never copied | No |
 | Settings, profiles, label colours, signatures, email→task links | `lifemail-data.json` in your Drive's hidden app folder + a copy on the device | No |
 | Access tokens (1-hour) | This device only (browser storage of the LifeMail site) | Yes — never leaves the device, never put in Drive, links, LifeOS, logs or backups |
 
-"Sign out of all accounts on this device" (Settings → Privacy) revokes the tokens with Google and clears the offline cache.
+"Sign out of all accounts on this device" (Settings → Privacy) revokes the tokens with Google and deletes the offline copy. Removing an account deletes that account's copy; Settings → Offline & search → "Remove email from this device" deletes it at any time. Changes made offline wait in an outbox on the device until they are sent to Gmail.
 
 ## Showing email safely
 

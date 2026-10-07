@@ -88,8 +88,8 @@ with sync_playwright() as p:
     check('m1 (gsi + NGDR subject) got BOTH labels + important', gsi in MSGS['m1']['labelIds'] and 'Label_7' in MSGS['m1']['labelIds'] and 'IMPORTANT' in MSGS['m1']['labelIds'], MSGS['m1']['labelIds'])
     check('m2 (no match) untouched', MSGS['m2']['labelIds'] == ['INBOX'])
     check('m3 (sent by me) skipped', MSGS['m3']['labelIds'] == ['SENT'])
-    fetched = [c[1].rsplit('/', 1)[1] for c in calls if '/users/me/messages/m' in c[1]]
-    check('sent mail not even downloaded', 'm3' not in fetched, fetched)
+    fetched = [c[1].rsplit('/', 1)[1] for c in calls if '/users/me/messages/m' in c[1] and c[2].get('format') == ['metadata']]
+    check('rules do not even look at sent mail', 'm3' not in fetched, fetched)
     gets = [c for c in calls if c[1].endswith('/messages/m1')]
     check('headers only (no email text) when no rule needs it', gets and gets[0][2].get('format') == ['metadata'], gets[:1])
     bm = [json.loads(c[3]) for c in calls if c[1].endswith('/batchModify')]

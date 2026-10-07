@@ -36,6 +36,10 @@ js/actions.js            Archive, delete, star, labels, unread (with undo)
 js/gmail.js              GmailProvider — the only file that knows Gmail's API
 js/demo.js               DemoProvider — sample mailbox with the same methods
 js/store.js              Settings file in Google Drive + offline cache
+js/offline.js            Offline copy of Gmail on the device, history-based sync, outbox, offline-aware provider
+js/search.js             Gmail-style search words, matching, snippets, people suggestions (pure, unit-tested)
+js/search-ui.js          Search box: results as you type, suggestions, recent searches, tips
+js/rules*.js             Email rules (engine, runner, screens)
 js/auth.js               Google sign-in (no secrets)
 js/lib.js                Pure helpers (MIME, payload, links, suggestions) — unit tested
 js/vendor/purify.min.js  DOMPurify email sanitiser
@@ -107,7 +111,9 @@ Sync rule: the copy with the newer `updatedAt` wins; accounts added on a device 
 |---|---|
 | `localStorage lm_data_v1` | Copy of the Drive file (instant start, offline) |
 | `localStorage lm_tokens_v1` | 1-hour Google access tokens per account |
-| `IndexedDB lifemail-cache` | Last list per view (≤ 60 summaries) for offline viewing |
+| `IndexedDB lifemail-cache` | Last list per view (≤ 60 summaries) for instant start |
+| `IndexedDB lifemail-mail` | Offline copy of recent Gmail (js/offline.js): messages, bodies, opened attachments, sync markers, outbox of offline changes |
+| `localStorage lm_offline_v1` | Offline settings for this device (on/off, how many days) |
 
 Labels, stars, read state, archive/trash are **Gmail's own** — LifeMail does not keep a separate copy, so Gmail on other devices always agrees.
 

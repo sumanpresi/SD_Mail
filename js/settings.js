@@ -5,12 +5,13 @@ import { cacheClear } from './store.js';
 import { isAndroidApp, androidSaveBlob } from './bridge.js';
 import { workSettings, isAllowedWorkUrl, openWorkplace, WORK_DEFAULTS } from './workplace.js';
 import { mountLabels, mountRules } from './rules-ui.js';
+import * as OFF from './offline.js';
 import { encodePayload, createTaskPayload, buildLifeOSUrl, isAllowedLifeOSUrl } from './lib.js';
 
 const COLORS = ['#3a6ea5', '#2f7d6d', '#b4583a', '#7a6ab8', '#a0782b', '#b05c9a', '#4f8a3c', '#c2453d', '#5f6f7a', '#d9822b'];
 const TABS = [
   ['accounts', 'Accounts'], ['work', 'Work (Government)'], ['profiles', 'Profiles & Focus'], ['lifeos', 'LifeOS'], ['labels', 'Labels'], ['rules', 'Email rules'],
-  ['notify', 'Notifications'], ['appearance', 'Appearance'], ['privacy', 'Privacy & Security'], ['data', 'Data & Sync'], ['about', 'About'],
+  ['offline', 'Offline & search'], ['notify', 'Notifications'], ['appearance', 'Appearance'], ['privacy', 'Privacy & Security'], ['data', 'Data & Sync'], ['about', 'About'],
 ];
 
 export function openSettings(tab = 'accounts') {
@@ -114,6 +115,28 @@ const PANELS = {
   labels: () => '',
   rules: () => '',
 
+  offline: () => {
+    const o = OFF.offlineSettings();
+    return `<h4>Email on this device</h4>
+    <div class="note">LifeMail keeps a copy of your recent Gmail <b>on this ${isAndroidApp ? 'phone' : 'device'}</b> — like the Gmail, Outlook and Apple Mail apps — so you can <b>read and search without internet</b>, and search gives results as you type. The copy is not put in Google Drive (Drive also needs internet); Drive keeps only your settings and rules. Government Workplace mail is never copied.</div>
+    ${S.demo ? '<div class="note warn">Demo mode: offline copies are made only for real Gmail accounts.</div>' : ''}
+    <label class="check"><input type="checkbox" id="off-on" ${o.enabled ? 'checked' : ''}> <span>Keep email on this device for offline reading and fast search</span></label>
+    <label class="field"><span>How much email to keep</span><select id="off-days" ${o.enabled ? '' : 'disabled'}>${OFF.DAY_CHOICES.map(([d, n]) => `<option value="${d}" ${o.days === d ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    <div id="off-stats" class="off-stats"><div><span>Saved emails</span><b>…</b></div></div>
+    <div id="off-progress"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="off-sync" ${o.enabled && !S.demo ? '' : 'disabled'}>${icon('refresh', 'sm')} Update now</button><button class="btn danger" id="off-clear">Remove email from this device</button></div>
+    <h4>How it works</h4>
+    <ul class="note" style="padding-left:28px;line-height:1.7">
+      <li>The first download runs in the background while LifeMail is open (the text of each email and pictures inside it). After that, only changes are fetched on every mail check.</li>
+      <li>Attachments are kept after you open them once.</li>
+      <li>Offline you can read, search, archive, delete, star, mark read/unread, label — and send. These changes wait in an outbox and go to Gmail automatically when you are back online.</li>
+      <li>Searching while online shows results from this device instantly, then adds anything older that Gmail finds.</li>
+      <li>Spam and Trash are not downloaded. Signing out or removing an account deletes its copy from this device.</li>
+    </ul>
+    <h4>Search words</h4>
+    <div class="note" style="line-height:1.8"><code>from:rakesh</code> · <code>to:director</code> · <code>subject:NGDR</code> · <code>has:attachment</code> · <code>filename:pdf</code> · <code>label:GSI</code> · <code>is:unread</code> · <code>is:starred</code> · <code>in:sent</code> · <code>after:01/10/2026</code> · <code>before:2026/10/31</code> · <code>newer_than:7d</code> · <code>larger:5M</code> · <code>"exact phrase"</code> · <code>-leave-out</code> · <code>NGDR OR BISAG</code></div>`;
+  },
+
   notify: () => `
     <h4>New-email notifications</h4>
     <label class="check"><input type="checkbox" id="nt-on" ${D().settings.notifications ? 'checked' : ''}> Show a notification when new email arrives</label>
@@ -150,7 +173,7 @@ const PANELS = {
     ${S.demo ? '<button class="btn" id="leave-demo" style="margin-left:8px">Leave demo</button>' : ''}`,
 
   about: () => `
-    <h4>LifeMail</h4><p>Turn email into action. Version 1.5 — labels &amp; email rules.</p>
+    <h4>LifeMail</h4><p>Turn email into action. Version 1.6 — offline mail, fast search, labels &amp; email rules.</p>
     <p class="note">Keyboard (with a keyboard attached): <b>j/k</b> next/previous · <b>Enter</b> open · <b>e</b> archive · <b>#</b> delete · <b>s</b> star · <b>u</b> unread · <b>l</b> label · <b>t</b> + Task · <b>r</b>/<b>a</b>/<b>f</b> reply/all/forward · <b>c</b> compose · <b>/</b> search.</p>
     <p class="note">Email sanitising by DOMPurify (Apache-2.0 / MPL-2.0).</p>`,
 };
@@ -197,7 +220,7 @@ const WIRE = {
     panel.querySelectorAll('[data-remove]').forEach((b) => (b.onclick = async () => {
       const a = D().accounts[+b.dataset.remove];
       if (!(await confirmBox(`Remove ${a.email} from LifeMail? Your email stays in Gmail.`, 'Remove', true))) return;
-      forgetToken(a.email); dropProvider(a.email);
+      forgetToken(a.email); dropProvider(a.email); OFF.clearAccount(a.email).catch(() => {});
       set((d) => { d.accounts = d.accounts.filter((x) => x.email !== a.email); if (d.storageAccount === a.email) d.storageAccount = ''; });
       if (S.view.account === a.email) S.view.account = 'all';
       redraw(); emit('reload');
@@ -238,6 +261,35 @@ const WIRE = {
   },
   labels(panel, redraw, m) { mountLabels(panel, m); },
   rules(panel, redraw, m) { mountRules(panel, m); },
+  offline(panel, redraw) {
+    const q = (x) => panel.querySelector(x);
+    const fill = async () => {
+      const st = await OFF.offlineStats(); if (!panel.isConnected) return;
+      const last = Math.max(0, ...st.metas.map((m) => m.lastSync || 0));
+      q('#off-stats').innerHTML = `<div><span>Saved emails</span><b>${st.count.toLocaleString()}</b></div>
+        <div><span>Space used</span><b>${st.usage ? (st.usage / 1048576).toFixed(st.usage > 1e8 ? 0 : 1) + ' MB' : '—'}</b></div>
+        <div><span>Last updated</span><b>${last ? new Date(last).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : 'Not yet'}</b></div>
+        <div><span>Waiting to send</span><b>${st.pending}</b></div>
+        ${D().accounts.length > 1 ? Object.entries(st.perAccount).map(([a, n]) => `<div><span>${esc(a)}</span><b>${n.toLocaleString()}</b></div>`).join('') : ''}`;
+      const p = OFF.offlineState().progress;
+      q('#off-progress').innerHTML = p && p.total ? `<div class="note">Downloading ${esc(p.account)}: ${p.done.toLocaleString()} of ${p.total.toLocaleString()}</div><div class="off-bar"><i style="width:${Math.round((p.done / p.total) * 100)}%"></i></div>` : OFF.offlineState().syncing ? '<div class="note">Checking for changes…</div>' : '';
+    };
+    fill();
+    const iv = setInterval(() => { if (!panel.isConnected || !q('#off-stats')) return clearInterval(iv); fill(); }, 1500);
+    q('#off-on').onchange = async (e) => {
+      if (!e.target.checked) {
+        if (!(await confirmBox('Stop keeping email on this device? The saved copy will be removed. (Your email stays in Gmail.)', 'Stop & remove', true))) { e.target.checked = true; return; }
+        OFF.setOfflineSettings({ enabled: false }); await OFF.clearAll(); toast('Offline copy removed from this device');
+      } else { OFF.setOfflineSettings({ enabled: true }); OFF.askPersistentStorage(); emit('offline-sync'); toast('Downloading email for offline use…'); }
+      redraw();
+    };
+    q('#off-days').onchange = (e) => { OFF.setOfflineSettings({ days: +e.target.value }); OFF.askPersistentStorage(); emit('offline-sync'); toast('Updating the saved email…'); fill(); };
+    q('#off-sync').onclick = () => { emit('offline-sync'); toast('Updating…'); setTimeout(fill, 800); };
+    q('#off-clear').onclick = async () => {
+      if (!(await confirmBox('Remove all email saved on this device? Your email stays in Gmail. It will download again while “Keep email on this device” is on.', 'Remove', true))) return;
+      await OFF.clearAll(); toast('Removed from this device'); fill();
+    };
+  },
   notify(panel) {
     panel.querySelector('#nt-on').onchange = async (e) => {
       if (e.target.checked && 'Notification' in window && Notification.permission !== 'granted') {
@@ -257,7 +309,7 @@ const WIRE = {
     panel.querySelector('#signout-all').onclick = async () => {
       if (!(await confirmBox('Sign out of all accounts on this device? Your settings stay in Google Drive.', 'Sign out', true))) return;
       D().accounts.forEach((a) => forgetToken(a.email));
-      await cacheClear(); location.reload();
+      await cacheClear(); await OFF.clearAll(); location.reload();
     };
   },
   data(panel, redraw) {

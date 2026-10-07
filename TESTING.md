@@ -18,6 +18,7 @@ python3 tests/e2e.py
 python3 tests/gmail_mock.py
 python3 tests/rules.py        # labels + email rules (demo mode)
 python3 tests/rules_gmail.py  # email rules against a fake Gmail API
+python3 tests/offline.py      # offline copy + search, switching the internet off and on
 ```
 
 ## What could not be tested here (please test on the Fold)

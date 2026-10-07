@@ -1,10 +1,10 @@
 // LifeMail service worker: makes the app open instantly and offline.
 // It caches ONLY the app's own files. Email data from Google is never cached here.
-const VERSION = 'lifemail-v1.5.1';
+const VERSION = 'lifemail-v1.6.0';
 const SHELL = [
   '/', '/index.html', '/oauth.html', '/css/app.css', '/manifest.webmanifest',
   '/js/app.js', '/js/core.js', '/js/lib.js', '/js/auth.js', '/js/config.js', '/js/gmail.js', '/js/demo.js',
-  '/js/store.js', '/js/actions.js', '/js/reader.js', '/js/compose.js', '/js/task.js', '/js/settings.js', '/js/backnav.js', '/js/workplace.js', '/js/bridge.js', '/js/rules-engine.js', '/js/rules.js', '/js/rules-ui.js',
+  '/js/store.js', '/js/actions.js', '/js/reader.js', '/js/compose.js', '/js/task.js', '/js/settings.js', '/js/backnav.js', '/js/workplace.js', '/js/bridge.js', '/js/rules-engine.js', '/js/rules.js', '/js/rules-ui.js', '/js/search.js', '/js/search-ui.js', '/js/offline.js',
   '/js/oauth-landing.js', '/js/vendor/purify.min.js', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png',
 ];
 
